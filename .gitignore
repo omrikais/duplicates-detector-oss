@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+dist/
+build/
+.idea/
+.coverage
+duplicates_detector/_version.py
+.agents/
+.superpowers/
+logs/
+progress.jsonl
+.claude/
+
+# Swift / Xcode generated artifacts
+.build/
+.build-cache/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+buildServer.json
+.worktrees/
+uv.lock
+.superpowers/
