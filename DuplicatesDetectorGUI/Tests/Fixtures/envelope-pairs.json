@@ -1,0 +1,161 @@
+{
+  "version": "1.5.0",
+  "generated_at": "2025-01-15T10:30:00+00:00",
+  "args": {
+    "directories": ["/videos"],
+    "threshold": 50,
+    "content": false,
+    "content_interval": null,
+    "hash_size": null,
+    "hash_algo": null,
+    "content_method": null,
+    "content_strategy": null,
+    "scene_threshold": null,
+    "weights": null,
+    "keep": "newest",
+    "action": "delete",
+    "group": false,
+    "sort": "score",
+    "limit": null,
+    "min_score": null,
+    "exclude": null,
+    "reference": null,
+    "min_size": null,
+    "max_size": null,
+    "min_duration": null,
+    "max_duration": null,
+    "min_resolution": null,
+    "max_resolution": null,
+    "min_bitrate": null,
+    "max_bitrate": null,
+    "codec": null,
+    "mode": "video",
+    "embed_thumbnails": false,
+    "thumbnail_size": null
+  },
+  "stats": {
+    "files_scanned": 10,
+    "files_after_filter": 8,
+    "total_pairs_scored": 28,
+    "pairs_above_threshold": 2,
+    "groups_count": null,
+    "space_recoverable": 104857600,
+    "scan_time": 0.15,
+    "extract_time": 1.234,
+    "filter_time": 0.002,
+    "content_hash_time": 0.0,
+    "scoring_time": 0.567,
+    "total_time": 2.003
+  },
+  "pairs": [
+    {
+      "file_a": "/videos/clip1.mp4",
+      "file_b": "/videos/clip1_copy.mp4",
+      "score": 85.5,
+      "breakdown": {
+        "filename": 45.0,
+        "duration": 27.0,
+        "resolution": 8.5,
+        "file_size": 5.0
+      },
+      "detail": {
+        "filename": [0.9, 50],
+        "duration": [0.9, 30],
+        "resolution": [0.85, 10],
+        "file_size": [0.5, 10]
+      },
+      "file_a_metadata": {
+        "duration": 120.5,
+        "width": 1920,
+        "height": 1080,
+        "file_size": 52428800,
+        "codec": "h264",
+        "bitrate": 3500000,
+        "framerate": 29.97,
+        "audio_channels": 2,
+        "mtime": 1705312200.0
+      },
+      "file_b_metadata": {
+        "duration": 120.3,
+        "width": 1920,
+        "height": 1080,
+        "file_size": 52428800,
+        "codec": "h264",
+        "bitrate": 3500000,
+        "framerate": 29.97,
+        "audio_channels": 2,
+        "mtime": 1705312300.0
+      },
+      "file_a_is_reference": true,
+      "file_b_is_reference": false,
+      "keep": "b"
+    },
+    {
+      "file_a": "/videos/song.mp4",
+      "file_b": "/videos/song_edit.mp4",
+      "score": 62.0,
+      "breakdown": {
+        "filename": 35.0,
+        "duration": 20.0,
+        "resolution": 7.0,
+        "content": null
+      },
+      "detail": {
+        "filename": [0.7, 50],
+        "duration": [0.667, 30],
+        "resolution": [0.7, 10]
+      },
+      "file_a_metadata": {
+        "duration": 245.0,
+        "width": 1280,
+        "height": 720,
+        "file_size": 31457280,
+        "codec": "h264",
+        "bitrate": 1000000,
+        "framerate": 24.0,
+        "audio_channels": 2,
+        "mtime": 1705300000.0
+      },
+      "file_b_metadata": {
+        "duration": 240.0,
+        "width": 1280,
+        "height": 720,
+        "file_size": 30000000,
+        "codec": "h265",
+        "bitrate": 900000,
+        "framerate": 24.0,
+        "audio_channels": 2,
+        "mtime": 1705300100.0,
+        "tag_title": "My Song",
+        "tag_artist": "Artist Name"
+      },
+      "file_a_is_reference": false,
+      "file_b_is_reference": false,
+      "keep": "b"
+    }
+  ],
+  "analytics": {
+    "directory_stats": [
+      {
+        "path": "/videos",
+        "total_files": 10,
+        "duplicate_files": 4,
+        "total_size": 50000000,
+        "recoverable_size": 20000000,
+        "duplicate_density": 0.4
+      }
+    ],
+    "score_distribution": [
+      {"range": "60-65", "min": 60, "max": 65, "count": 1},
+      {"range": "85-90", "min": 85, "max": 90, "count": 1}
+    ],
+    "filetype_breakdown": [
+      {"extension": ".mp4", "count": 8, "size": 40000000},
+      {"extension": ".mkv", "count": 2, "size": 10000000}
+    ],
+    "creation_timeline": [
+      {"date": "2024-01-15", "total_files": 6, "duplicate_files": 4},
+      {"date": "2024-01-16", "total_files": 4, "duplicate_files": 0}
+    ]
+  }
+}

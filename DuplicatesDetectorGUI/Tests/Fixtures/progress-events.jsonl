@@ -1,0 +1,17 @@
+{"type":"stage_start","stage":"scan","timestamp":"2025-01-15T10:30:00.000+00:00"}
+{"type":"progress","stage":"scan","current":5,"total":10,"timestamp":"2025-01-15T10:30:00.100+00:00","file":"/videos/clip1.mp4"}
+{"type":"stage_end","stage":"scan","total":10,"elapsed":0.15,"timestamp":"2025-01-15T10:30:00.150+00:00"}
+{"type":"stage_start","stage":"extract","timestamp":"2025-01-15T10:30:00.151+00:00","total":10}
+{"type":"progress","stage":"extract","current":3,"total":10,"timestamp":"2025-01-15T10:30:00.500+00:00","file":"/videos/clip2.mp4"}
+{"type":"progress","stage":"extract","current":10,"total":10,"timestamp":"2025-01-15T10:30:01.400+00:00"}
+{"type":"stage_end","stage":"extract","total":10,"elapsed":1.234,"timestamp":"2025-01-15T10:30:01.385+00:00"}
+{"type":"stage_start","stage":"filter","timestamp":"2025-01-15T10:30:01.386+00:00"}
+{"type":"stage_end","stage":"filter","total":8,"elapsed":0.002,"timestamp":"2025-01-15T10:30:01.388+00:00"}
+{"type":"stage_start","stage":"content_hash","timestamp":"2025-01-15T10:30:01.389+00:00","total":8}
+{"type":"progress","stage":"content_hash","current":4,"total":8,"timestamp":"2025-01-15T10:30:02.000+00:00"}
+{"type":"stage_end","stage":"content_hash","total":8,"elapsed":1.5,"timestamp":"2025-01-15T10:30:02.889+00:00","hashed":6}
+{"type":"stage_start","stage":"score","timestamp":"2025-01-15T10:30:02.890+00:00","total":28}
+{"type":"progress","stage":"score","current":14,"total":28,"timestamp":"2025-01-15T10:30:03.200+00:00"}
+{"type":"stage_end","stage":"score","total":28,"elapsed":0.567,"timestamp":"2025-01-15T10:30:03.457+00:00"}
+{"type":"stage_start","stage":"report","timestamp":"2025-01-15T10:30:03.458+00:00"}
+{"type":"stage_end","stage":"report","total":2,"elapsed":0.01,"timestamp":"2025-01-15T10:30:03.468+00:00"}

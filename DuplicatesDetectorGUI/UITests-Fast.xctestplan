@@ -1,0 +1,32 @@
+{
+  "configurations" : [
+    {
+      "id" : "fast-config",
+      "name" : "Fast Configuration",
+      "options" : {}
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:DuplicatesDetector.xcodeproj",
+      "identifier" : "DuplicatesDetectorUITests",
+      "name" : "DuplicatesDetectorUITests"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:DuplicatesDetector.xcodeproj",
+        "identifier" : "DuplicatesDetectorUITests",
+        "name" : "DuplicatesDetectorUITests"
+      },
+      "selectedTests" : [
+        "ScanFlowTests",
+        "ReviewFlowTests",
+        "ActionFlowTests",
+        "ErrorFlowTests"
+      ]
+    }
+  ],
+  "version" : 1
+}
