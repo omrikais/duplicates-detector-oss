@@ -1,0 +1,16 @@
+{
+  "include": [
+    "duplicates_detector",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".pytest_cache"
+  ],
+  "extraPaths": ["scripts"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": "warning"
+}
