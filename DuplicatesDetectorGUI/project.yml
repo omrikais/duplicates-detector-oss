@@ -1,0 +1,165 @@
+name: DuplicatesDetector
+options:
+  bundleIdPrefix: com.omrikaisari
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    DEAD_CODE_STRIPPING: "YES"
+    ENABLE_MODULE_VERIFIER: "YES"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+    ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: "YES"
+    SWIFT_EMIT_LOC_STRINGS: "YES"
+
+packages:
+  swift-subprocess:
+    url: https://github.com/swiftlang/swift-subprocess.git
+    from: "0.3.0"
+  TOMLKit:
+    url: https://github.com/LebJe/TOMLKit.git
+    from: "0.6.0"
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    from: "1.17.0"
+
+targets:
+  DuplicatesDetectorKit:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - "App/DuplicatesDetectorApp.swift"
+          - "DuplicatesDetector.entitlements"
+          - "Assets.xcassets"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.omrikaisari.DuplicatesDetectorKit
+        PRODUCT_NAME: DuplicatesDetector
+        PRODUCT_MODULE_NAME: DuplicatesDetector
+        GENERATE_INFOPLIST_FILE: "YES"
+        DEFINES_MODULE: "YES"
+    dependencies:
+      - package: swift-subprocess
+        product: Subprocess
+      - package: TOMLKit
+      - sdk: Photos.framework
+      - sdk: AppIntents.framework
+      - sdk: CoreLocation.framework
+
+  DuplicatesDetectorApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/App/DuplicatesDetectorApp.swift
+      - path: Sources/Assets.xcassets
+    entitlements:
+      path: Sources/DuplicatesDetector.entitlements
+      properties:
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.automation.apple-events: true
+        com.apple.security.personal-information.photos-library: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.omrikaisari.DuplicatesDetector
+        PRODUCT_NAME: "Duplicates Detector"
+        PRODUCT_MODULE_NAME: DuplicatesDetectorApp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: Config/App-Info.plist
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: "YES"
+        GENERATE_APPINTENTS_METADATA_FOR_FRAMEWORKS: "YES"
+      configs:
+        Debug:
+          DD_CLI_DEVELOPMENT_PATH: "$(SRCROOT)/../.venv/bin/duplicates-detector"
+        Release:
+          DD_CLI_DEVELOPMENT_PATH: ""
+    dependencies:
+      - target: DuplicatesDetectorKit
+      - sdk: AppIntents.framework
+
+  DuplicatesDetectorTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+        excludes:
+          - "Fixtures/**"
+      - path: Tests/Fixtures
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.omrikaisari.DuplicatesDetectorTests
+        PRODUCT_MODULE_NAME: DuplicatesDetectorTests
+        GENERATE_INFOPLIST_FILE: "YES"
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+        SWIFT_EMIT_LOC_STRINGS: "NO"
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+    postBuildScripts:
+      - name: Sign Test Bundle
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          bundle_path="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}"
+          if [[ -d "${bundle_path}" ]]; then
+            /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "${bundle_path}"
+          fi
+    dependencies:
+      - target: DuplicatesDetectorKit
+      - package: SnapshotTesting
+
+  DuplicatesDetectorUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: UITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.omrikaisari.DuplicatesDetectorUITests
+        PRODUCT_MODULE_NAME: DuplicatesDetectorUITests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: DuplicatesDetectorApp
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    dependencies:
+      - target: DuplicatesDetectorApp
+
+schemes:
+  DuplicatesDetector:
+    build:
+      targets:
+        DuplicatesDetectorKit: all
+        DuplicatesDetectorApp: all
+        DuplicatesDetectorTests: [test]
+    test:
+      targets:
+        - DuplicatesDetectorTests
+    run:
+      config: Debug
+      executable: DuplicatesDetectorApp
+    archive:
+      config: Release
+
+  DuplicatesDetector-UITests:
+    build:
+      targets:
+        DuplicatesDetectorKit: all
+        DuplicatesDetectorApp: all
+        DuplicatesDetectorUITests: [test]
+    test:
+      targets:
+        - DuplicatesDetectorUITests
+    run:
+      config: Debug
+      executable: DuplicatesDetectorApp

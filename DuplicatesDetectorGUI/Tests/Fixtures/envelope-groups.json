@@ -1,0 +1,153 @@
+{
+  "version": "1.5.0",
+  "generated_at": "2025-01-15T10:30:00+00:00",
+  "args": {
+    "directories": ["/videos"],
+    "threshold": 50,
+    "content": false,
+    "content_interval": null,
+    "hash_size": null,
+    "hash_algo": null,
+    "content_method": null,
+    "content_strategy": null,
+    "scene_threshold": null,
+    "weights": null,
+    "keep": null,
+    "action": "delete",
+    "group": true,
+    "sort": "score",
+    "limit": null,
+    "min_score": null,
+    "exclude": null,
+    "reference": null,
+    "min_size": null,
+    "max_size": null,
+    "min_duration": null,
+    "max_duration": null,
+    "min_resolution": null,
+    "max_resolution": null,
+    "min_bitrate": null,
+    "max_bitrate": null,
+    "codec": null,
+    "mode": "video",
+    "embed_thumbnails": false,
+    "thumbnail_size": null
+  },
+  "stats": {
+    "files_scanned": 5,
+    "files_after_filter": 5,
+    "total_pairs_scored": 10,
+    "pairs_above_threshold": 3,
+    "groups_count": 1,
+    "space_recoverable": 0,
+    "scan_time": 0.1,
+    "extract_time": 0.5,
+    "filter_time": 0.001,
+    "content_hash_time": 0.0,
+    "scoring_time": 0.3,
+    "total_time": 1.0
+  },
+  "groups": [
+    {
+      "group_id": 1,
+      "file_count": 3,
+      "max_score": 90.0,
+      "min_score": 60.0,
+      "avg_score": 75.0,
+      "files": [
+        {
+          "path": "/videos/a.mp4",
+          "duration": 60.0,
+          "width": 1920,
+          "height": 1080,
+          "file_size": 10485760,
+          "codec": "h264",
+          "bitrate": 1400000,
+          "framerate": 30.0,
+          "audio_channels": 2,
+          "mtime": 1705000000.0,
+          "is_reference": false
+        },
+        {
+          "path": "/videos/a_copy.mp4",
+          "duration": 60.0,
+          "width": 1920,
+          "height": 1080,
+          "file_size": 10400000,
+          "codec": "h264",
+          "bitrate": 1380000,
+          "framerate": 30.0,
+          "audio_channels": 2,
+          "mtime": 1705000100.0,
+          "is_reference": false
+        },
+        {
+          "path": "/videos/a_reencode.mp4",
+          "duration": 59.8,
+          "width": 1280,
+          "height": 720,
+          "file_size": 5242880,
+          "codec": "h265",
+          "bitrate": 700000,
+          "framerate": 30.0,
+          "audio_channels": 2,
+          "mtime": 1705000200.0,
+          "is_reference": false
+        }
+      ],
+      "pairs": [
+        {
+          "file_a": "/videos/a.mp4",
+          "file_b": "/videos/a_copy.mp4",
+          "score": 90.0,
+          "breakdown": {
+            "filename": 40.0,
+            "duration": 30.0,
+            "resolution": 10.0,
+            "file_size": 10.0
+          },
+          "detail": {
+            "filename": [0.8, 50],
+            "duration": [1.0, 30],
+            "resolution": [1.0, 10],
+            "file_size": [1.0, 10]
+          }
+        },
+        {
+          "file_a": "/videos/a.mp4",
+          "file_b": "/videos/a_reencode.mp4",
+          "score": 75.0,
+          "breakdown": {
+            "filename": 30.0,
+            "duration": 28.0,
+            "resolution": 7.0,
+            "file_size": 10.0
+          },
+          "detail": {
+            "filename": [0.6, 50],
+            "duration": [0.933, 30],
+            "resolution": [0.7, 10],
+            "file_size": [1.0, 10]
+          }
+        },
+        {
+          "file_a": "/videos/a_copy.mp4",
+          "file_b": "/videos/a_reencode.mp4",
+          "score": 60.0,
+          "breakdown": {
+            "filename": 15.0,
+            "duration": 28.0,
+            "resolution": 7.0,
+            "file_size": 10.0
+          },
+          "detail": {
+            "filename": [0.3, 50],
+            "duration": [0.933, 30],
+            "resolution": [0.7, 10],
+            "file_size": [1.0, 10]
+          }
+        }
+      ]
+    }
+  ]
+}
