@@ -74,7 +74,7 @@ targets:
         PRODUCT_MODULE_NAME: DuplicatesDetectorApp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: Config/App-Info.plist
-        MARKETING_VERSION: "3.0.4"
+        MARKETING_VERSION: "2.0.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
