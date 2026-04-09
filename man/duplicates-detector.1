@@ -1,0 +1,391 @@
+.TH DUPLICATES\-DETECTOR "1" "2026\-04\-09" "duplicates\-detector 3.0.5.dev4+g6a1dea7ea.d20260408" "Duplicates Detector Manual"
+.SH NAME
+duplicates\-detector \- detect duplicate video, image, and audio files
+.SH SYNOPSIS
+.B duplicates\-detector
+[-h] [--version] [--print-completion SHELL] {scan} ...
+.SH DESCRIPTION
+Detect duplicate/similar video or image files by comparing metadata and filenames.
+
+.SH
+POSITIONAL ARGUMENTS
+.TP
+\fBduplicates\-detector\fR \fI\,scan\/\fR
+Scan directories for duplicates (default)
+
+.SH COMMAND \fI\,'duplicates\-detector scan'\/\fR
+usage: duplicates\-detector scan [\-h] [\-\-no\-recursive] [\-\-threshold N]
+                                [\-\-workers N] [\-\-extensions EXT,EXT]
+                                [\-\-exclude PATTERN] [\-\-reference DIR]
+                                [\-\-min\-size SIZE] [\-\-max\-size SIZE]
+                                [\-\-min\-duration SECS] [\-\-max\-duration SECS]
+                                [\-\-min\-resolution WxH] [\-\-max\-resolution WxH]
+                                [\-\-min\-bitrate RATE] [\-\-max\-bitrate RATE]
+                                [\-\-codec CODEC,...] [\-v] [\-q] [\-\-no\-color]
+                                [\-\-machine\-progress] [\-\-content]
+                                [\-\-content\-method METHOD]
+                                [\-\-rotation\-invariant] [\-\-audio]
+                                [\-\-no\-audio\-cache] [\-\-no\-content\-cache]
+                                [\-\-no\-metadata\-cache] [\-\-no\-pre\-hash]
+                                [\-\-sidecar\-extensions EXTS] [\-\-no\-sidecars]
+                                [\-\-cache\-dir DIR] [\-\-min\-score N]
+                                [\-\-weights SPEC] [\-\-ignore\-file PATH]
+                                [\-\-mode MODE] [\-\-no\-config] [\-\-profile NAME]
+                                [\-i] [\-\-dry\-run] [\-\-keep STRATEGY]
+                                [\-\-action ACTION] [\-\-move\-to\-dir DIR]
+                                [\-\-group] [\-\-sort FIELD] [\-\-limit N]
+                                [\-\-format FORMAT] [\-\-json\-envelope]
+                                [\-\-embed\-thumbnails] [\-\-thumbnail\-size WxH]
+                                [\-\-output FILE] [\-\-clear\-ignored] [\-\-log FILE]
+                                [\-\-generate\-undo LOG_FILE]
+                                [\-\-resume SESSION_ID] [\-\-list\-sessions]
+                                [\-\-delete\-session SESSION_ID]
+                                [\-\-clear\-sessions] [\-\-pause\-file PATH]
+                                [\-\-cache\-stats] [\-\-save\-config]
+                                [\-\-show\-config] [\-\-save\-profile NAME]
+                                [\-\-replay FILE]
+                                [directories ...]
+
+.TP
+\fBdirectories\fR
+Directories to scan (default: current directory)
+
+.SH OPTIONS \fI\,'duplicates\-detector scan'\/\fR
+.TP
+\fB\-\-no\-recursive\fR
+Only scan the top\-level directory, not subdirectories
+
+.TP
+\fB\-\-threshold\fR \fI\,N\/\fR
+Minimum similarity score (0\-100) to report (default: 50)
+
+.TP
+\fB\-\-workers\fR \fI\,N\/\fR
+Number of parallel workers (default: auto\-detect based on CPU cores)
+
+.TP
+\fB\-\-extensions\fR \fI\,EXT,EXT\/\fR
+Comma\-separated video extensions to match (e.g., mp4,mkv,avi)
+
+.TP
+\fB\-\-exclude\fR \fI\,PATTERN\/\fR
+Glob pattern to exclude paths (repeatable, e.g., \-\-exclude '**/thumbnails/**')
+
+.TP
+\fB\-\-reference\fR \fI\,DIR\/\fR
+Reference directory — files participate in comparison but are never deleted
+(repeatable)
+
+.TP
+\fB\-\-min\-size\fR \fI\,SIZE\/\fR
+Minimum file size to include (e.g., 10MB, 1.5GB, 500KB)
+
+.TP
+\fB\-\-max\-size\fR \fI\,SIZE\/\fR
+Maximum file size to include (e.g., 10MB, 1.5GB, 500KB)
+
+.TP
+\fB\-\-min\-duration\fR \fI\,SECS\/\fR
+Minimum duration in seconds to include
+
+.TP
+\fB\-\-max\-duration\fR \fI\,SECS\/\fR
+Maximum duration in seconds to include
+
+.TP
+\fB\-\-min\-resolution\fR \fI\,WxH\/\fR
+Minimum resolution to include (e.g., 1280x720, 1920x1080)
+
+.TP
+\fB\-\-max\-resolution\fR \fI\,WxH\/\fR
+Maximum resolution to include (e.g., 1920x1080, 3840x2160)
+
+.TP
+\fB\-\-min\-bitrate\fR \fI\,RATE\/\fR
+Minimum container bitrate to include (e.g., 1000000, 5Mbps, 500kbps)
+
+.TP
+\fB\-\-max\-bitrate\fR \fI\,RATE\/\fR
+Maximum container bitrate to include (e.g., 20Mbps, 50000kbps)
+
+.TP
+\fB\-\-codec\fR \fI\,CODEC,...\/\fR
+Restrict to specific video codecs (comma\-separated, e.g., h264,hevc,av1)
+
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Show detailed progress information and full file paths
+
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+Suppress progress bars and summary output
+
+.TP
+\fB\-\-no\-color\fR
+Disable colored output
+
+.TP
+\fB\-\-machine\-progress\fR
+Emit JSON\-lines progress events to stderr (for GUI frontends)
+
+.TP
+\fB\-\-content\fR
+Enable content\-based perceptual hashing for more accurate detection (slower)
+
+.TP
+\fB\-\-content\-method\fR \fI\,METHOD\/\fR
+Content method: phash (PDQ perceptual hash, default for video/image), ssim
+(structural similarity), clip (CLIP ViT\-B/32 embeddings), simhash (SimHash
+text fingerprint, default for document), tfidf (TF\-IDF cosine similarity,
+document only)
+
+.TP
+\fB\-\-rotation\-invariant\fR
+Compute content hashes for all rotations and flips (4\-8x slower, catches
+rotated/flipped duplicates). Only affects image mode.
+
+.TP
+\fB\-\-audio\fR
+Enable Chromaprint audio fingerprinting for more accurate video duplicate
+detection (requires fpcalc)
+
+.TP
+\fB\-\-no\-audio\-cache\fR
+Disable disk cache for audio fingerprints (re\-extract every run)
+
+.TP
+\fB\-\-no\-content\-cache\fR
+Disable disk cache for content hashes (re\-extract every run)
+
+.TP
+\fB\-\-no\-metadata\-cache\fR
+Disable disk cache for metadata (re\-run ffprobe on every file)
+
+.TP
+\fB\-\-no\-pre\-hash\fR
+Disable pre\-hash computation (MD5 of first 4KB) used for byte\-identical
+detection
+
+.TP
+\fB\-\-sidecar\-extensions\fR \fI\,EXTS\/\fR
+Comma\-separated sidecar extensions to detect (default: .xmp,.aae,.thm,.json)
+
+.TP
+\fB\-\-no\-sidecars\fR
+Disable sidecar file detection and co\-deletion
+
+.TP
+\fB\-\-cache\-dir\fR \fI\,DIR\/\fR
+Directory for metadata and content hash caches (default:
+XDG_CACHE_HOME/duplicates\-detector)
+
+.TP
+\fB\-\-min\-score\fR \fI\,N\/\fR
+Minimum similarity score (0\-100) to include in results
+
+.TP
+\fB\-\-weights\fR \fI\,SPEC\/\fR
+Custom comparator weights (e.g.,
+'filename=50,duration=30,resolution=10,filesize=10')
+
+.TP
+\fB\-\-ignore\-file\fR \fI\,PATH\/\fR
+Path to the ignored\-pairs JSON file (default: $XDG_DATA_HOME/duplicates\-
+detector/ignored\-pairs.json)
+
+.TP
+\fB\-\-mode\fR \fI\,MODE\/\fR
+Detection mode: video (default), image, audio, auto (mixed media), or document
+
+.TP
+\fB\-i\fR, \fB\-\-interactive\fR
+Interactively review each pair and choose files to delete
+
+.TP
+\fB\-\-dry\-run\fR
+Preview interactive deletions without removing files
+
+.TP
+\fB\-\-keep\fR \fI\,STRATEGY\/\fR
+Auto\-select which file to keep: newest, oldest, biggest, smallest, longest,
+highest\-res, edited
+
+.TP
+\fB\-\-action\fR \fI\,ACTION\/\fR
+Deletion method: delete (default), trash, move\-to, hardlink, symlink, or
+reflink
+
+.TP
+\fB\-\-move\-to\-dir\fR \fI\,DIR\/\fR
+Staging directory for \-\-action move\-to
+
+.TP
+\fB\-\-group\fR
+Group transitive duplicates into clusters instead of showing pairs
+
+.TP
+\fB\-\-sort\fR \fI\,FIELD\/\fR
+Sort results by: score (default), size, path, or mtime
+
+.TP
+\fB\-\-limit\fR \fI\,N\/\fR
+Maximum number of pairs (or groups) to display
+
+.TP
+\fB\-\-format\fR \fI\,FORMAT\/\fR
+Output format: table (default), json, csv, shell, html, or markdown
+
+.TP
+\fB\-\-json\-envelope\fR
+Wrap JSON output in envelope with version, args, and stats
+
+.TP
+\fB\-\-embed\-thumbnails\fR
+Embed base64 thumbnails in JSON envelope output (requires \-\-json\-envelope)
+
+.TP
+\fB\-\-thumbnail\-size\fR \fI\,WxH\/\fR
+Thumbnail dimensions as WxH (default: 160x90 video, 160x160 image)
+
+.TP
+\fB\-\-output\fR \fI\,FILE\/\fR
+Write output to FILE instead of stdout
+
+.TP
+\fB\-\-clear\-ignored\fR
+Clear the ignored\-pairs list and exit
+
+.TP
+\fB\-\-log\fR \fI\,FILE\/\fR
+Append JSON\-lines action log to FILE (one record per deletion/move/link)
+
+.TP
+\fB\-\-generate\-undo\fR \fI\,LOG_FILE\/\fR
+Generate a shell script to undo actions recorded in a \-\-log file
+
+.SH CONFIGURATION \fI\,'duplicates\-detector scan'\/\fR
+.TP
+\fB\-\-no\-config\fR
+Ignore the config file for this run
+
+.TP
+\fB\-\-profile\fR \fI\,NAME\/\fR
+Load a named profile (from ~/.config/duplicates\-detector/profiles/)
+
+.SH SESSION MANAGEMENT \fI\,'duplicates\-detector scan'\/\fR
+.TP
+\fB\-\-resume\fR \fI\,SESSION_ID\/\fR
+Resume a previously paused scan session (mutually exclusive with directory
+arguments)
+
+.TP
+\fB\-\-list\-sessions\fR
+List available scan sessions and exit
+
+.TP
+\fB\-\-delete\-session\fR \fI\,SESSION_ID\/\fR
+Delete a specific saved session and exit
+
+.TP
+\fB\-\-clear\-sessions\fR
+Clear all saved scan sessions and exit
+
+.TP
+\fB\-\-pause\-file\fR \fI\,PATH\/\fR
+Path to pause control file for GUI integration
+
+.TP
+\fB\-\-cache\-stats\fR
+Show cache hit/miss statistics in summary
+
+.SH SCAN CONFIGURATION \fI\,'duplicates\-detector scan'\/\fR
+.TP
+\fB\-\-save\-config\fR
+Write current flags to config file and exit
+
+.TP
+\fB\-\-show\-config\fR
+Print the resolved config (after merge) and exit
+
+.TP
+\fB\-\-save\-profile\fR \fI\,NAME\/\fR
+Save current flags as a named profile and exit
+
+.TP
+\fB\-\-replay\fR \fI\,FILE\/\fR
+Load previously generated JSON envelope output and re\-apply filters/strategies
+without re\-scanning
+
+.SH OPTIONS
+.TP
+\fB\-\-version\fR
+show program's version number and exit
+
+.TP
+\fB\-\-print\-completion\fR \fI\,SHELL\/\fR
+Print shell completion script and exit
+.SH EXAMPLES
+.TP
+Scan a directory for duplicate videos:
+.EX
+duplicates\-detector scan /path/to/videos \-v
+.EE
+.TP
+Scan for duplicate images:
+.EX
+duplicates\-detector scan /path/to/photos \-\-mode image \-v
+.EE
+.TP
+Scan for duplicate audio files:
+.EX
+duplicates\-detector scan /path/to/music \-\-mode audio \-v
+.EE
+.TP
+Enable perceptual content hashing for higher accuracy:
+.EX
+duplicates\-detector scan /path/to/videos \-\-content \-v
+.EE
+.TP
+Interactive review with trash action:
+.EX
+duplicates\-detector scan /path/to/videos \-i \-\-keep newest \-\-action trash
+.EE
+.TP
+Custom scoring weights:
+.EX
+duplicates\-detector scan /path/to/videos \-\-weights "filename=30,duration=40,resolution=20,filesize=10"
+.EE
+.SH FILES
+.TP
+.I ~/.config/duplicates\-detector/config.toml
+Configuration file (TOML format). Use \fB\-\-save\-config\fR to write current settings.
+.TP
+.I ~/.local/share/duplicates\-detector/ignore.json
+Persistent false\-positive ignore list. Managed via interactive review (\fBs!\fR command).
+.TP
+.I ~/.local/share/duplicates\-detector/sessions/
+Paused scan sessions for \fB\-\-resume\fR.
+.TP
+.I ~/.cache/duplicates\-detector/
+Metadata, content hash, and audio fingerprint caches.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Runtime error.
+.TP
+.B 2
+Invalid arguments.
+.TP
+.B 130
+Interrupted by Ctrl\-C.
+.SH SEE ALSO
+.BR ffprobe (1),
+.BR ffmpeg (1),
+.BR fpcalc (1)
+.SH BUGS
+Report bugs at
+.UR https://github.com/omrikais/duplicates\-detector\-oss/issues
+.UE .

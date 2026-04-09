@@ -1,0 +1,69 @@
+[EXAMPLES]
+.TP
+Scan a directory for duplicate videos:
+.EX
+duplicates\-detector scan /path/to/videos \-v
+.EE
+.TP
+Scan for duplicate images:
+.EX
+duplicates\-detector scan /path/to/photos \-\-mode image \-v
+.EE
+.TP
+Scan for duplicate audio files:
+.EX
+duplicates\-detector scan /path/to/music \-\-mode audio \-v
+.EE
+.TP
+Enable perceptual content hashing for higher accuracy:
+.EX
+duplicates\-detector scan /path/to/videos \-\-content \-v
+.EE
+.TP
+Interactive review with trash action:
+.EX
+duplicates\-detector scan /path/to/videos \-i \-\-keep newest \-\-action trash
+.EE
+.TP
+Custom scoring weights:
+.EX
+duplicates\-detector scan /path/to/videos \-\-weights "filename=30,duration=40,resolution=20,filesize=10"
+.EE
+
+[FILES]
+.TP
+.I ~/.config/duplicates\-detector/config.toml
+Configuration file (TOML format). Use \fB\-\-save\-config\fR to write current settings.
+.TP
+.I ~/.local/share/duplicates\-detector/ignore.json
+Persistent false\-positive ignore list. Managed via interactive review (\fBs!\fR command).
+.TP
+.I ~/.local/share/duplicates\-detector/sessions/
+Paused scan sessions for \fB\-\-resume\fR.
+.TP
+.I ~/.cache/duplicates\-detector/
+Metadata, content hash, and audio fingerprint caches.
+
+[EXIT STATUS]
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Runtime error.
+.TP
+.B 2
+Invalid arguments.
+.TP
+.B 130
+Interrupted by Ctrl\-C.
+
+[SEE ALSO]
+.BR ffprobe (1),
+.BR ffmpeg (1),
+.BR fpcalc (1)
+
+[BUGS]
+Report bugs at
+.UR https://github.com/omrikais/duplicates\-detector\-oss/issues
+.UE .
