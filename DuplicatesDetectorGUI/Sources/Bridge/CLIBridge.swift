@@ -440,15 +440,15 @@ actor CLIBridge: CLIBridgeProtocol {
 
     // MARK: - Session Management
 
+    /// Return the cached binary path, falling back to `locateBinary()`.
+    private func ensureBinaryPath() async -> String? {
+        if let binaryPath { return binaryPath }
+        return await locateBinary()
+    }
+
     /// Clear all saved scan sessions via CLI `--clear-sessions`.
     func clearSessions() async {
-        let path: String?
-        if let bp = binaryPath {
-            path = bp
-        } else {
-            path = await locateBinary()
-        }
-        guard let path else { return }
+        guard let path = await ensureBinaryPath() else { return }
         _ = try? await run(
             .name(path),
             arguments: ["scan", "--clear-sessions"],
@@ -459,13 +459,7 @@ actor CLIBridge: CLIBridgeProtocol {
 
     /// Delete a specific saved scan session via CLI `--delete-session`.
     func deleteSession(_ sessionId: String) async {
-        let path: String?
-        if let bp = binaryPath {
-            path = bp
-        } else {
-            path = await locateBinary()
-        }
-        guard let path else { return }
+        guard let path = await ensureBinaryPath() else { return }
         _ = try? await run(
             .name(path),
             arguments: ["scan", "--delete-session", sessionId],
@@ -480,13 +474,7 @@ actor CLIBridge: CLIBridgeProtocol {
     /// subprocess error, decoding failure) — callers must distinguish this from
     /// a successful empty result (`[]`).
     func listSessionsJSON() async -> [SessionInfo]? {
-        let path: String?
-        if let bp = binaryPath {
-            path = bp
-        } else {
-            path = await locateBinary()
-        }
-        guard let path else { return nil }
+        guard let path = await ensureBinaryPath() else { return nil }
         do {
             let result = try await run(
                 .name(path),

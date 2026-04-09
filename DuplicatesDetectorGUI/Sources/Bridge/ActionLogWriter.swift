@@ -32,6 +32,14 @@ actor ActionLogWriter {
         self.logPath = logPath
         self.formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // Ensure parent directory exists once at init rather than per-write.
+        let directory = (logPath as NSString).deletingLastPathComponent
+        if !directory.isEmpty {
+            try? FileManager.default.createDirectory(
+                atPath: directory, withIntermediateDirectories: true
+            )
+        }
     }
 
     /// Append one action record as a JSON line. Returns `nil` on success, error message on failure.
@@ -88,18 +96,6 @@ actor ActionLogWriter {
             return "Failed to encode log record as UTF-8"
         }
         jsonString += "\n"
-
-        // Ensure parent directory exists
-        let directory = (logPath as NSString).deletingLastPathComponent
-        if !directory.isEmpty {
-            do {
-                try FileManager.default.createDirectory(
-                    atPath: directory, withIntermediateDirectories: true
-                )
-            } catch {
-                return "Failed to create log directory: \(error.localizedDescription)"
-            }
-        }
 
         // Append to file using O_APPEND for atomic append semantics
         do {

@@ -316,49 +316,56 @@ actor PhotosCacheDB {
             }
         }
 
-        // Pass 2: full decode only for above-threshold pairs
+        // Pass 2: full decode only for above-threshold pairs.
+        // Prepare once, reset per iteration to avoid redundant SQL compilation.
         var pairs: [PhotosScoredPair] = []
         pairs.reserveCapacity(aboveThresholdRowIDs.count)
         let decoder = JSONDecoder()
-        for (assetA, assetB) in aboveThresholdRowIDs {
+        do {
             var stmt: OpaquePointer?
             let sql = """
                 SELECT score, breakdown_json, detail_json
                 FROM scored_pairs WHERE asset_a = ? AND asset_b = ? AND config_hash = ?
                 """
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { continue }
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                return (keys, [])
+            }
             defer { sqlite3_finalize(stmt) }
-            sqlite3_bind_text(stmt, 1, (assetA as NSString).utf8String, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt, 2, (assetB as NSString).utf8String, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt, 3, (configHash as NSString).utf8String, -1, SQLITE_TRANSIENT)
 
-            guard sqlite3_step(stmt) == SQLITE_ROW else { continue }
-            let score = Int(sqlite3_column_int(stmt, 0))
+            for (assetA, assetB) in aboveThresholdRowIDs {
+                sqlite3_reset(stmt)
+                sqlite3_bind_text(stmt, 1, (assetA as NSString).utf8String, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 2, (assetB as NSString).utf8String, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 3, (configHash as NSString).utf8String, -1, SQLITE_TRANSIENT)
 
-            let breakdownPtr = sqlite3_column_blob(stmt, 1)
-            let breakdownLen = sqlite3_column_bytes(stmt, 1)
-            let breakdown: [String: Double]
-            if let breakdownPtr, breakdownLen > 0 {
-                let data = Data(bytes: breakdownPtr, count: Int(breakdownLen))
-                breakdown = (try? decoder.decode([String: Double].self, from: data)) ?? [:]
-            } else {
-                breakdown = [:]
+                guard sqlite3_step(stmt) == SQLITE_ROW else { continue }
+                let score = Int(sqlite3_column_int(stmt, 0))
+
+                let breakdownPtr = sqlite3_column_blob(stmt, 1)
+                let breakdownLen = sqlite3_column_bytes(stmt, 1)
+                let breakdown: [String: Double]
+                if let breakdownPtr, breakdownLen > 0 {
+                    let data = Data(bytes: breakdownPtr, count: Int(breakdownLen))
+                    breakdown = (try? decoder.decode([String: Double].self, from: data)) ?? [:]
+                } else {
+                    breakdown = [:]
+                }
+
+                let detailPtr = sqlite3_column_blob(stmt, 2)
+                let detailLen = sqlite3_column_bytes(stmt, 2)
+                let detail: [String: DetailScoreTuple]
+                if let detailPtr, detailLen > 0 {
+                    let data = Data(bytes: detailPtr, count: Int(detailLen))
+                    detail = (try? decoder.decode([String: DetailScoreTuple].self, from: data)) ?? [:]
+                } else {
+                    detail = [:]
+                }
+
+                pairs.append(PhotosScoredPair(
+                    assetA: assetA, assetB: assetB, score: score,
+                    breakdown: breakdown, detail: detail
+                ))
             }
-
-            let detailPtr = sqlite3_column_blob(stmt, 2)
-            let detailLen = sqlite3_column_bytes(stmt, 2)
-            let detail: [String: DetailScoreTuple]
-            if let detailPtr, detailLen > 0 {
-                let data = Data(bytes: detailPtr, count: Int(detailLen))
-                detail = (try? decoder.decode([String: DetailScoreTuple].self, from: data)) ?? [:]
-            } else {
-                detail = [:]
-            }
-
-            pairs.append(PhotosScoredPair(
-                assetA: assetA, assetB: assetB, score: score,
-                breakdown: breakdown, detail: detail
-            ))
         }
 
         return (keys, pairs)

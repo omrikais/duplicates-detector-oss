@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Centralized app-level persistent defaults.
 ///
@@ -54,16 +53,6 @@ public enum AppDefaults {
     }
 
     // MARK: - Registration
-
-    /// Ensures factory defaults are registered exactly once.
-    private static let _registrationLock = OSAllocatedUnfairLock(initialState: false)
-    private static func ensureRegistered() {
-        _registrationLock.withLock { registered in
-            guard !registered else { return }
-            registered = true
-            registerDefaults()
-        }
-    }
 
     /// Register factory defaults so `integer(forKey:)` etc. return sensible
     /// values even before the user explicitly sets anything.

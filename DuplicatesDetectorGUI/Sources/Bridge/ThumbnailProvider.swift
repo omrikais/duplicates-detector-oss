@@ -28,10 +28,7 @@ actor ThumbnailProvider {
     private static let maxConcurrentPrefetches = 6
 
     private init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        diskCacheDir = caches
-            .appendingPathComponent("DuplicatesDetector", isDirectory: true)
-            .appendingPathComponent("thumbnails", isDirectory: true)
+        diskCacheDir = CacheManager.thumbnailCacheDirectory
 
         memoryCache.countLimit = Self.memoryCacheCountLimit
         memoryCache.totalCostLimit = Self.memoryCacheTotalCostLimit

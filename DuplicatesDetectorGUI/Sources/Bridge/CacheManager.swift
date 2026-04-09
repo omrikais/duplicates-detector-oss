@@ -79,6 +79,15 @@ enum CacheManager {
         }
     }
 
+    // MARK: - Thumbnail Cache
+
+    static let thumbnailCacheDirectory: URL = {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return caches
+            .appendingPathComponent("DuplicatesDetector", isDirectory: true)
+            .appendingPathComponent("thumbnails", isDirectory: true)
+    }()
+
     // MARK: - Photos Library Cache
 
     /// Total size of the Photos metadata & scores database.
@@ -93,21 +102,13 @@ enum CacheManager {
 
     /// Total size of the thumbnail disk cache directory.
     static func thumbnailCacheSize() -> Int64 {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let thumbDir = caches
-            .appendingPathComponent("DuplicatesDetector", isDirectory: true)
-            .appendingPathComponent("thumbnails", isDirectory: true)
-        return directorySize(thumbDir)
+        directorySize(thumbnailCacheDirectory)
     }
 
     /// Remove the entire thumbnail disk cache directory.
     static func clearThumbnailCache() throws {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let thumbDir = caches
-            .appendingPathComponent("DuplicatesDetector", isDirectory: true)
-            .appendingPathComponent("thumbnails", isDirectory: true)
         do {
-            try FileManager.default.removeItem(at: thumbDir)
+            try FileManager.default.removeItem(at: thumbnailCacheDirectory)
         } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
             // Already gone — nothing to do
         }

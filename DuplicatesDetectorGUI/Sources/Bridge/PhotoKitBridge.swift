@@ -13,6 +13,12 @@ actor PhotoKitBridge: PhotoKitBridgeProtocol {
 
     static let shared = PhotoKitBridge()
 
+    /// Resource types that identify the primary asset data (photo or video).
+    /// Shared between `fetchAssets` and `filterOffloadedAssets`.
+    nonisolated static let primaryResourceTypes: Set<PHAssetResourceType> = [
+        .photo, .video, .fullSizePhoto, .fullSizeVideo,
+    ]
+
     private init() {}
 
     // MARK: - Authorization
@@ -91,6 +97,19 @@ actor PhotoKitBridge: PhotoKitBridgeProtocol {
         var cacheMisses = 0
         var iCloudSkipped = 0
 
+        let emitProgress = { (index: Int) in
+            let elapsed = Double(
+                DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds
+            ) / 1_000_000_000
+            let rate = elapsed > 0 ? Double(index + 1) / elapsed : 0
+            onProgress(.progress(StageProgressEvent(
+                stage: "extract", current: index + 1,
+                timestamp: formatter.string(from: Date()),
+                total: total, file: nil, rate: rate,
+                cacheHits: cacheHits, cacheMisses: cacheMisses
+            )))
+        }
+
         fetchResult.enumerateObjects { asset, index, stop in
             if isCancelled?() == true {
                 stop.pointee = true
@@ -113,23 +132,13 @@ actor PhotoKitBridge: PhotoKitBridgeProtocol {
             {
                 cacheHits += 1
                 assets.append(cached.metadata)
-                let elapsed = Double(
-                    DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds
-                ) / 1_000_000_000
-                let rate = elapsed > 0 ? Double(index + 1) / elapsed : 0
-                onProgress(.progress(StageProgressEvent(
-                    stage: "extract", current: index + 1,
-                    timestamp: formatter.string(from: Date()),
-                    total: total, file: nil, rate: rate,
-                    cacheHits: cacheHits, cacheMisses: cacheMisses
-                )))
+                emitProgress(index)
                 return
             }
 
             // Identify the primary resource and check local availability.
             let resources = PHAssetResource.assetResources(for: asset)
-            let primaryTypes: Set<PHAssetResourceType> = [.photo, .video, .fullSizePhoto, .fullSizeVideo]
-            guard let primary = resources.first(where: { primaryTypes.contains($0.type) }) else {
+            guard let primary = resources.first(where: { primaryResourceTypes.contains($0.type) }) else {
                 return
             }
 
@@ -198,21 +207,7 @@ actor PhotoKitBridge: PhotoKitBridgeProtocol {
             cacheMisses += 1
             assets.append(metadata)
             newEntries.append((asset.localIdentifier, assetModDate, metadata))
-
-            // Emit progress event with throughput
-            let elapsed = Double(DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000_000
-            let rate = elapsed > 0 ? Double(index + 1) / elapsed : 0
-            let event = StageProgressEvent(
-                stage: "extract",
-                current: index + 1,
-                timestamp: formatter.string(from: Date()),
-                total: total,
-                file: nil,
-                rate: rate,
-                cacheHits: cacheHits,
-                cacheMisses: cacheMisses
-            )
-            onProgress(.progress(event))
+            emitProgress(index)
         }
 
         return (assets: assets, newEntries: newEntries, iCloudSkipped: iCloudSkipped)
@@ -277,8 +272,7 @@ actor PhotoKitBridge: PhotoKitBridgeProtocol {
         var offloaded: Set<String> = []
         fetchResult.enumerateObjects { asset, _, _ in
             let resources = PHAssetResource.assetResources(for: asset)
-            let primaryTypes: Set<PHAssetResourceType> = [.photo, .video, .fullSizePhoto, .fullSizeVideo]
-            guard let primary = resources.first(where: { primaryTypes.contains($0.type) }) else { return }
+            guard let primary = resources.first(where: { Self.primaryResourceTypes.contains($0.type) }) else { return }
             if primary.responds(to: Selector(("locallyAvailable"))),
                (primary.value(forKey: "locallyAvailable") as? Bool) == false
             {
