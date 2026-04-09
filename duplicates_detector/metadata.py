@@ -327,6 +327,10 @@ _IMAGE_CACHE_FIELDS = _VIDEO_CACHE_FIELDS + (
 _AUDIO_CACHE_FIELDS = _VIDEO_CACHE_FIELDS + ("tag_title", "tag_artist", "tag_album")
 _DOCUMENT_CACHE_FIELDS = ("page_count", "doc_title", "doc_author", "doc_created")
 
+# Union of all per-mode cache field tuples — used by _extract_one_with_cache
+# to reconstruct VideoMetadata from any cached entry regardless of mode.
+_ALL_METADATA_CACHE_FIELDS = tuple(dict.fromkeys(_IMAGE_CACHE_FIELDS + _AUDIO_CACHE_FIELDS + _DOCUMENT_CACHE_FIELDS))
+
 
 def _extract_all_generic(
     files: list[Path],
@@ -460,20 +464,17 @@ def _extract_all_generic(
         )
         progress_emitter.stage_end("extract", total=len(files), elapsed=time.monotonic() - extract_start)
 
-    # Post-pass: store newly extracted metadata in cache
+    # Post-pass: store newly extracted metadata in cache (batch write).
     # Skip all-None entries (likely transient failures) so they
     # get retried on the next run instead of being permanently cached.
     if cache_db is not None:
-        for meta in results:
-            if cache_skip_fn(meta):
-                continue
-            data = {field: getattr(meta, field) for field in cache_fields}
-            cache_db.put_metadata(
-                meta.path,
-                data,
-                file_size=meta.file_size,
-                mtime=meta.mtime or 0.0,
-            )
+        batch = [
+            (meta.path, {field: getattr(meta, field) for field in cache_fields}, meta.file_size, meta.mtime or 0.0)
+            for meta in results
+            if not cache_skip_fn(meta)
+        ]
+        if batch:
+            cache_db.put_metadata_batch(batch)
     if cache is not None:
         for meta in results:
             if cache_skip_fn(meta):
@@ -1113,32 +1114,13 @@ def _extract_one_with_cache(
     if cache_db is not None:
         cached = cache_db.get_metadata(path, file_size=file_size, mtime=mtime)
         if cached is not None:
+            kwargs: dict[str, object] = {field: cached.get(field) for field in _ALL_METADATA_CACHE_FIELDS}
             return VideoMetadata(
                 path=path,
                 filename=path.stem,
                 file_size=file_size,
                 mtime=mtime,
-                duration=cached.get("duration"),
-                width=cached.get("width"),
-                height=cached.get("height"),
-                codec=cached.get("codec"),
-                bitrate=cached.get("bitrate"),
-                framerate=cached.get("framerate"),
-                audio_channels=cached.get("audio_channels"),
-                exif_datetime=cached.get("exif_datetime"),
-                exif_camera=cached.get("exif_camera"),
-                exif_lens=cached.get("exif_lens"),
-                exif_gps_lat=cached.get("exif_gps_lat"),
-                exif_gps_lon=cached.get("exif_gps_lon"),
-                exif_width=cached.get("exif_width"),
-                exif_height=cached.get("exif_height"),
-                tag_title=cached.get("tag_title"),
-                tag_artist=cached.get("tag_artist"),
-                tag_album=cached.get("tag_album"),
-                page_count=cached.get("page_count"),
-                doc_title=cached.get("doc_title"),
-                doc_author=cached.get("doc_author"),
-                doc_created=cached.get("doc_created"),
+                **kwargs,  # type: ignore[arg-type]
             )
 
     # Cache miss — do actual extraction

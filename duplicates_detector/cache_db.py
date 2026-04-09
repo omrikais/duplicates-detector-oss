@@ -342,92 +342,61 @@ class CacheDB:
             conn.commit()
 
     # ------------------------------------------------------------------
-    # Pre-hash operations
+    # Generic scalar cache helpers
     # ------------------------------------------------------------------
 
-    def get_pre_hash(
-        self,
-        path: Path,
-        *,
-        file_size: int,
-        mtime: float,
+    def _get_scalar(
+        self, table: str, column: str, stat_prefix: str, path: Path, *, file_size: int, mtime: float
     ) -> str | None:
-        """Return cached pre-hash hex digest if file_size and mtime match, else None."""
+        """Return a single cached string value if file_size and mtime match, else None."""
         path = path.resolve()
         conn = self._conn()
         row = conn.execute(
-            "SELECT pre_hash FROM pre_hashes WHERE path = ? AND file_size = ? AND mtime = ?",
+            f"SELECT {column} FROM {table} WHERE path = ? AND file_size = ? AND mtime = ?",  # noqa: S608
             (str(path), file_size, mtime),
         ).fetchone()
         if row is not None:
             with self._stats_lock:
-                self._stats["pre_hash_hits"] += 1
+                self._stats[f"{stat_prefix}_hits"] += 1
             return row[0]
         with self._stats_lock:
-            self._stats["pre_hash_misses"] += 1
+            self._stats[f"{stat_prefix}_misses"] += 1
         return None
 
-    def put_pre_hash(
-        self,
-        path: Path,
-        *,
-        file_size: int,
-        mtime: float,
-        pre_hash: str,
-    ) -> None:
-        """Store pre-hash hex digest with validation fields."""
+    def _put_scalar(self, table: str, column: str, path: Path, *, file_size: int, mtime: float, value: str) -> None:
+        """Store a single string value with validation fields."""
         path = path.resolve()
         conn = self._conn()
         with self._write_lock:
             conn.execute(
-                "INSERT OR REPLACE INTO pre_hashes (path, file_size, mtime, pre_hash) VALUES (?, ?, ?, ?)",
-                (str(path), file_size, mtime, pre_hash),
+                f"INSERT OR REPLACE INTO {table} (path, file_size, mtime, {column}) VALUES (?, ?, ?, ?)",  # noqa: S608
+                (str(path), file_size, mtime, value),
             )
             conn.commit()
+
+    # ------------------------------------------------------------------
+    # Pre-hash operations
+    # ------------------------------------------------------------------
+
+    def get_pre_hash(self, path: Path, *, file_size: int, mtime: float) -> str | None:
+        """Return cached pre-hash hex digest if file_size and mtime match, else None."""
+        return self._get_scalar("pre_hashes", "pre_hash", "pre_hash", path, file_size=file_size, mtime=mtime)
+
+    def put_pre_hash(self, path: Path, *, file_size: int, mtime: float, pre_hash: str) -> None:
+        """Store pre-hash hex digest with validation fields."""
+        self._put_scalar("pre_hashes", "pre_hash", path, file_size=file_size, mtime=mtime, value=pre_hash)
 
     # ------------------------------------------------------------------
     # SHA-256 hash operations
     # ------------------------------------------------------------------
 
-    def get_sha256(
-        self,
-        path: Path,
-        *,
-        file_size: int,
-        mtime: float,
-    ) -> str | None:
+    def get_sha256(self, path: Path, *, file_size: int, mtime: float) -> str | None:
         """Return cached SHA-256 hex digest if file_size and mtime match, else None."""
-        path = path.resolve()
-        conn = self._conn()
-        row = conn.execute(
-            "SELECT sha256 FROM sha256_hashes WHERE path = ? AND file_size = ? AND mtime = ?",
-            (str(path), file_size, mtime),
-        ).fetchone()
-        if row is not None:
-            with self._stats_lock:
-                self._stats["sha256_hits"] += 1
-            return row[0]
-        with self._stats_lock:
-            self._stats["sha256_misses"] += 1
-        return None
+        return self._get_scalar("sha256_hashes", "sha256", "sha256", path, file_size=file_size, mtime=mtime)
 
-    def put_sha256(
-        self,
-        path: Path,
-        *,
-        file_size: int,
-        mtime: float,
-        sha256: str,
-    ) -> None:
+    def put_sha256(self, path: Path, *, file_size: int, mtime: float, sha256: str) -> None:
         """Store SHA-256 hex digest with validation fields."""
-        path = path.resolve()
-        conn = self._conn()
-        with self._write_lock:
-            conn.execute(
-                "INSERT OR REPLACE INTO sha256_hashes (path, file_size, mtime, sha256) VALUES (?, ?, ?, ?)",
-                (str(path), file_size, mtime, sha256),
-            )
-            conn.commit()
+        self._put_scalar("sha256_hashes", "sha256", path, file_size=file_size, mtime=mtime, value=sha256)
 
     # ------------------------------------------------------------------
     # CLIP embedding operations

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from duplicates_detector.grouper import DuplicateGroup
+    from duplicates_detector.metadata import VideoMetadata
     from duplicates_detector.scorer import ScoredPair
 
 
@@ -57,6 +58,20 @@ class AnalyticsResult:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _unique_files_from_pairs(pairs: Sequence[ScoredPair]) -> dict[str, VideoMetadata]:
+    """Deduplicate files across all scored pairs, keyed by ``str(path)``."""
+    files: dict[str, VideoMetadata] = {}
+    for p in pairs:
+        files[str(p.file_a.path)] = p.file_a
+        files[str(p.file_b.path)] = p.file_b
+    return files
+
+
+# ---------------------------------------------------------------------------
 # Compute functions
 # ---------------------------------------------------------------------------
 
@@ -80,14 +95,7 @@ def compute_directory_stats(
     if not pairs:
         return ()
 
-    # Deduplicate files across all pairs.
-    from duplicates_detector.metadata import VideoMetadata
-
-    files: dict[str, VideoMetadata] = {}
-    for p in pairs:
-        files[str(p.file_a.path)] = p.file_a
-        files[str(p.file_b.path)] = p.file_b
-
+    files = _unique_files_from_pairs(pairs)
     recoverable_paths: set[str] = set()
 
     if groups and keep_strategy:
@@ -214,12 +222,7 @@ def compute_filetype_breakdown(
     if not pairs:
         return ()
 
-    from duplicates_detector.metadata import VideoMetadata
-
-    files: dict[str, VideoMetadata] = {}
-    for p in pairs:
-        files[str(p.file_a.path)] = p.file_a
-        files[str(p.file_b.path)] = p.file_b
+    files = _unique_files_from_pairs(pairs)
 
     ext_count: dict[str, int] = defaultdict(int)
     ext_size: dict[str, int] = defaultdict(int)
@@ -249,13 +252,8 @@ def compute_creation_timeline(
     if not pairs:
         return ()
 
-    from duplicates_detector.metadata import VideoMetadata
-
     # Collect pair-sourced files (all are "duplicate" files).
-    dup_files: dict[str, VideoMetadata] = {}
-    for p in pairs:
-        dup_files[str(p.file_a.path)] = p.file_a
-        dup_files[str(p.file_b.path)] = p.file_b
+    dup_files = _unique_files_from_pairs(pairs)
 
     date_total: dict[str, int] = defaultdict(int)
     date_dup: dict[str, int] = defaultdict(int)

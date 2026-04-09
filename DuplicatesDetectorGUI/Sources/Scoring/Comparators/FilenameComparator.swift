@@ -34,8 +34,12 @@ private func normalizeFilename(_ filename: String) -> String {
 struct FilenameComparator {
 
     func score(_ filenameA: String, _ filenameB: String) -> Double {
-        let na = normalizeFilename(filenameA)
-        let nb = normalizeFilename(filenameB)
+        score(normalizedA: normalizeFilename(filenameA), normalizedB: normalizeFilename(filenameB))
+    }
+
+    /// Score pre-normalized filenames (avoids redundant normalization when the
+    /// caller has already called `FilenameComparator.normalize()`).
+    func score(normalizedA na: String, normalizedB nb: String) -> Double {
         guard !na.isEmpty, !nb.isEmpty else { return 0.0 }
 
         // Guard 1: Numeric ID detection

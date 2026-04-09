@@ -532,34 +532,6 @@ actor BackgroundScanEngine {
 
     // MARK: - Static scoring functions
 
-    /// Levenshtein edit distance between two strings.
-    nonisolated static func levenshteinDistance(_ a: String, _ b: String) -> Int {
-        let a = Array(a)
-        let b = Array(b)
-        let m = a.count
-        let n = b.count
-
-        if m == 0 { return n }
-        if n == 0 { return m }
-
-        var prev = Array(0...n)
-        var curr = [Int](repeating: 0, count: n + 1)
-
-        for i in 1...m {
-            curr[0] = i
-            for j in 1...n {
-                let cost = a[i - 1] == b[j - 1] ? 0 : 1
-                curr[j] = min(
-                    prev[j] + 1,       // deletion
-                    curr[j - 1] + 1,   // insertion
-                    prev[j - 1] + cost  // substitution
-                )
-            }
-            swap(&prev, &curr)
-        }
-        return prev[n]
-    }
-
     /// Filename similarity score (0.0–1.0). Case-insensitive, extensions stripped.
     nonisolated static func filenameSimilarity(_ pathA: String, _ pathB: String) -> Double {
         let nameA = URL(filePath: pathA).deletingPathExtension().lastPathComponent.lowercased()

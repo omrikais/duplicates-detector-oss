@@ -228,15 +228,15 @@ struct BackgroundScanEngineTests {
         #expect(result == ["filename": 50, "duration": 30, "resolution": 10, "filesize": 10])
     }
 
-    // MARK: - levenshteinDistance
+    // MARK: - levenshteinDistance (global, from LevenshteinRatio.swift)
 
     @Test("levenshteinDistance basic cases")
     func levenshteinBasic() {
-        #expect(BackgroundScanEngine.levenshteinDistance("", "") == 0)
-        #expect(BackgroundScanEngine.levenshteinDistance("abc", "") == 3)
-        #expect(BackgroundScanEngine.levenshteinDistance("", "xyz") == 3)
-        #expect(BackgroundScanEngine.levenshteinDistance("kitten", "sitting") == 3)
-        #expect(BackgroundScanEngine.levenshteinDistance("same", "same") == 0)
+        #expect(levenshteinDistance("", "") == 0)
+        #expect(levenshteinDistance("abc", "") == 3)
+        #expect(levenshteinDistance("", "xyz") == 3)
+        #expect(levenshteinDistance("kitten", "sitting") == 3)
+        #expect(levenshteinDistance("same", "same") == 0)
     }
 
     // MARK: - parseFFProbeOutput
