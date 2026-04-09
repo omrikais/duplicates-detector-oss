@@ -75,6 +75,17 @@ def normalize_filename(filename: str) -> str:
     return " ".join(cleaned.lower().split())
 
 
+def _weighted_average(parts: list[tuple[float, float]]) -> float | None:
+    """Compute redistributed weighted average of (sub_weight, sub_score) pairs.
+
+    Returns None when no sub-fields have data on both sides.
+    """
+    if not parts:
+        return None
+    total_weight = sum(w for w, _ in parts)
+    return sum(w / total_weight * s for w, s in parts)
+
+
 class FileNameComparator(Comparator):
     """Compare filenames after stripping quality markers and normalizing."""
 
@@ -249,12 +260,7 @@ class ExifComparator(Comparator):
             cross_match = a.exif_width == b.exif_width and a.exif_height == b.exif_height
             parts.append((self._SUB_WEIGHTS["dimensions"], 1.0 if (a_match and b_match and cross_match) else 0.0))
 
-        if not parts:
-            return None
-
-        # Redistribute: normalize sub-weights by sum of available sub-weights
-        total_weight = sum(w for w, _ in parts)
-        return sum(w / total_weight * s for w, s in parts)
+        return _weighted_average(parts)
 
 
 class ContentComparator(Comparator):
@@ -326,32 +332,54 @@ class AudioComparator(Comparator):
         return compare_audio_fingerprints(a.audio_fingerprint, b.audio_fingerprint)
 
 
+def _build_comparators(
+    specs: list[tuple[type[Comparator], float]],
+    *,
+    rotation_invariant: bool = False,
+    is_document: bool = False,
+) -> list[Comparator]:
+    """Instantiate comparators from a (class, weight) spec list.
+
+    ContentComparator receives the rotation_invariant and is_document kwargs;
+    all other classes are constructed with no arguments.
+    """
+    comps: list[Comparator] = []
+    for cls, weight in specs:
+        if cls is ContentComparator:
+            comp = cls(rotation_invariant=rotation_invariant, is_document=is_document)
+        else:
+            comp = cls()
+        comp.weight = weight
+        comps.append(comp)
+    return comps
+
+
 def get_default_comparators() -> list[Comparator]:
     """Return the default set of comparators."""
-    return [
-        FileNameComparator(),
-        DurationComparator(),
-        ResolutionComparator(),
-        FileSizeComparator(),
-        DirectoryComparator(),
-    ]
+    return _build_comparators(
+        [
+            (FileNameComparator, 35.0),
+            (DurationComparator, 35.0),
+            (ResolutionComparator, 15.0),
+            (FileSizeComparator, 15.0),
+            (DirectoryComparator, 0.0),
+        ]
+    )
 
 
 def get_content_comparators(*, rotation_invariant: bool = False) -> list[Comparator]:
-    """Return comparators including ContentComparator with adjusted weights.
-
-    Weights are redistributed so the total remains 100:
-    filename=20, duration=20, resolution=10, file_size=10, content=40.
-    """
-    fn = FileNameComparator()
-    fn.weight = 20.0
-    dur = DurationComparator()
-    dur.weight = 20.0
-    res = ResolutionComparator()
-    res.weight = 10.0
-    fs = FileSizeComparator()
-    fs.weight = 10.0
-    return [fn, dur, res, fs, ContentComparator(rotation_invariant=rotation_invariant), DirectoryComparator()]
+    """Return comparators including ContentComparator with adjusted weights."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 20.0),
+            (DurationComparator, 20.0),
+            (ResolutionComparator, 10.0),
+            (FileSizeComparator, 10.0),
+            (ContentComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ],
+        rotation_invariant=rotation_invariant,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -474,35 +502,31 @@ def get_weighted_content_comparators(
 
 
 def get_image_comparators() -> list[Comparator]:
-    """Return the default set of comparators for image mode (no duration).
-
-    Weights: filename=25, resolution=20, filesize=15, exif=40 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 25.0
-    res = ResolutionComparator()
-    res.weight = 20.0
-    fs = FileSizeComparator()
-    fs.weight = 15.0
-    return [fn, res, fs, ExifComparator(), DirectoryComparator()]
+    """Return the default set of comparators for image mode (no duration)."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 25.0),
+            (ResolutionComparator, 20.0),
+            (FileSizeComparator, 15.0),
+            (ExifComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ]
+    )
 
 
 def get_image_content_comparators(*, rotation_invariant: bool = False) -> list[Comparator]:
-    """Return image comparators including ContentComparator.
-
-    Weights: filename=15, resolution=10, filesize=10, exif=25, content=40 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 15.0
-    res = ResolutionComparator()
-    res.weight = 10.0
-    fs = FileSizeComparator()
-    fs.weight = 10.0
-    ex = ExifComparator()
-    ex.weight = 25.0
-    ct = ContentComparator(rotation_invariant=rotation_invariant)
-    ct.weight = 40.0
-    return [fn, res, fs, ex, ct, DirectoryComparator()]
+    """Return image comparators including ContentComparator."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 15.0),
+            (ResolutionComparator, 10.0),
+            (FileSizeComparator, 10.0),
+            (ExifComparator, 25.0),
+            (ContentComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ],
+        rotation_invariant=rotation_invariant,
+    )
 
 
 def get_weighted_image_comparators(weights: dict[str, float]) -> list[Comparator]:
@@ -524,37 +548,33 @@ def get_weighted_image_content_comparators(
 
 
 def get_audio_comparators() -> list[Comparator]:
-    """Return comparators for video mode with audio fingerprinting.
-
-    Weights: filename=25, duration=25, resolution=10, filesize=10, audio=30 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 25.0
-    dur = DurationComparator()
-    dur.weight = 25.0
-    res = ResolutionComparator()
-    res.weight = 10.0
-    fs = FileSizeComparator()
-    fs.weight = 10.0
-    return [fn, dur, res, fs, AudioComparator(), DirectoryComparator()]
+    """Return comparators for video mode with audio fingerprinting."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 25.0),
+            (DurationComparator, 25.0),
+            (ResolutionComparator, 10.0),
+            (FileSizeComparator, 10.0),
+            (AudioComparator, 30.0),
+            (DirectoryComparator, 0.0),
+        ]
+    )
 
 
 def get_audio_content_comparators(*, rotation_invariant: bool = False) -> list[Comparator]:
-    """Return comparators for video mode with audio + visual content hashing.
-
-    Weights: filename=15, duration=15, resolution=10, filesize=10, audio=10, content=40 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 15.0
-    dur = DurationComparator()
-    dur.weight = 15.0
-    res = ResolutionComparator()
-    res.weight = 10.0
-    fs = FileSizeComparator()
-    fs.weight = 10.0
-    ac = AudioComparator()
-    ac.weight = 10.0
-    return [fn, dur, res, fs, ac, ContentComparator(rotation_invariant=rotation_invariant), DirectoryComparator()]
+    """Return comparators for video mode with audio + visual content hashing."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 15.0),
+            (DurationComparator, 15.0),
+            (ResolutionComparator, 10.0),
+            (FileSizeComparator, 10.0),
+            (AudioComparator, 10.0),
+            (ContentComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ],
+        rotation_invariant=rotation_invariant,
+    )
 
 
 def get_weighted_audio_comparators(weights: dict[str, float]) -> list[Comparator]:
@@ -611,12 +631,7 @@ class TagComparator(Comparator):
             ratio = fuzz.ratio(a.tag_album, b.tag_album) / 100.0
             parts.append((self._SUB_WEIGHTS["album"], ratio))
 
-        if not parts:
-            return None
-
-        # Redistribute: normalize sub-weights by sum of available sub-weights
-        total_weight = sum(w for w, _ in parts)
-        return sum(w / total_weight * s for w, s in parts)
+        return _weighted_average(parts)
 
 
 class DirectoryComparator(Comparator):
@@ -703,40 +718,32 @@ class DocMetaComparator(Comparator):
             except (ValueError, TypeError):
                 pass  # unparseable dates — skip this sub-field
 
-        if not parts:
-            return None
-
-        # Redistribute: normalize sub-weights by sum of available sub-weights
-        total_weight = sum(w for w, _ in parts)
-        return sum(w / total_weight * s for w, s in parts)
+        return _weighted_average(parts)
 
 
 def get_audio_mode_comparators() -> list[Comparator]:
-    """Return the default set of comparators for audio file mode (no resolution).
-
-    Weights: filename=30, duration=30, tags=40 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 30.0
-    dur = DurationComparator()
-    dur.weight = 30.0
-    return [fn, dur, TagComparator(), DirectoryComparator()]
+    """Return the default set of comparators for audio file mode (no resolution)."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 30.0),
+            (DurationComparator, 30.0),
+            (TagComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ]
+    )
 
 
 def get_audio_mode_fingerprint_comparators() -> list[Comparator]:
-    """Return comparators for audio file mode with Chromaprint fingerprinting.
-
-    Weights: filename=15, duration=15, tags=20, audio=50 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 15.0
-    dur = DurationComparator()
-    dur.weight = 15.0
-    tc = TagComparator()
-    tc.weight = 20.0
-    ac = AudioComparator()
-    ac.weight = 50.0
-    return [fn, dur, tc, ac, DirectoryComparator()]
+    """Return comparators for audio file mode with Chromaprint fingerprinting."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 15.0),
+            (DurationComparator, 15.0),
+            (TagComparator, 20.0),
+            (AudioComparator, 50.0),
+            (DirectoryComparator, 0.0),
+        ]
+    )
 
 
 def get_weighted_audio_mode_comparators(weights: dict[str, float]) -> list[Comparator]:
@@ -755,33 +762,31 @@ def get_weighted_audio_mode_fingerprint_comparators(weights: dict[str, float]) -
 
 
 def get_document_comparators() -> list[Comparator]:
-    """Return the default set of comparators for document mode.
-
-    Weights: filename=30, filesize=15, page_count=15, doc_meta=40 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 30.0
-    fs = FileSizeComparator()
-    fs.weight = 15.0
-    return [fn, fs, PageCountComparator(), DocMetaComparator(), DirectoryComparator()]
+    """Return the default set of comparators for document mode."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 30.0),
+            (FileSizeComparator, 15.0),
+            (PageCountComparator, 15.0),
+            (DocMetaComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ]
+    )
 
 
 def get_document_content_comparators() -> list[Comparator]:
-    """Return document comparators including ContentComparator (SimHash).
-
-    Weights: filename=15, filesize=10, page_count=10, doc_meta=25, content=40 (sum=100).
-    """
-    fn = FileNameComparator()
-    fn.weight = 15.0
-    fs = FileSizeComparator()
-    fs.weight = 10.0
-    pc = PageCountComparator()
-    pc.weight = 10.0
-    dm = DocMetaComparator()
-    dm.weight = 25.0
-    ct = ContentComparator(is_document=True)
-    ct.weight = 40.0
-    return [fn, fs, pc, dm, ct, DirectoryComparator()]
+    """Return document comparators including ContentComparator (SimHash)."""
+    return _build_comparators(
+        [
+            (FileNameComparator, 15.0),
+            (FileSizeComparator, 10.0),
+            (PageCountComparator, 10.0),
+            (DocMetaComparator, 25.0),
+            (ContentComparator, 40.0),
+            (DirectoryComparator, 0.0),
+        ],
+        is_document=True,
+    )
 
 
 def get_weighted_document_comparators(weights: dict[str, float]) -> list[Comparator]:

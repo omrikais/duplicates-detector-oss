@@ -109,36 +109,39 @@ class ScoredPair:
     detail: dict[str, tuple[float, float]]  # comparator name -> (raw_score, weight)
 
 
-def _bucket_by_duration(
+def _bucket_by_field(
     items: list[VideoMetadata],
+    key: Callable[[VideoMetadata], float | int | None],
     tolerance: float = 2.0,
 ) -> list[list[VideoMetadata]]:
-    """Group videos into duration buckets where members are within ±tolerance seconds.
+    """Group items into buckets where members are within ±tolerance of a numeric field.
 
-    Videos with unknown duration go into a catch-all bucket.
+    Items where *key* returns None go into a catch-all bucket.
     """
     known = sorted(
-        [v for v in items if v.duration is not None],
-        key=lambda v: v.duration,  # type: ignore[arg-type]
+        [v for v in items if key(v) is not None],
+        key=lambda v: key(v),  # type: ignore[arg-type]
     )
-    unknown = [v for v in items if v.duration is None]
+    unknown = [v for v in items if key(v) is None]
 
     buckets: list[list[VideoMetadata]] = []
 
     if known:
         current_bucket: list[VideoMetadata] = [known[0]]
-        bucket_start = known[0].duration  # type: ignore[assignment]
+        bucket_start: float = key(known[0])  # type: ignore[assignment]
 
         for item in known[1:]:
-            if item.duration is None:
-                raise ValueError(f"item.duration must not be None (filtered to known durations): {item.path}")
-            if item.duration - bucket_start <= tolerance * 2:
+            val = key(item)
+            if val is None:
+                unknown.append(item)
+                continue
+            if val - bucket_start <= tolerance * 2:  # type: ignore[operator]
                 current_bucket.append(item)
             else:
                 if len(current_bucket) >= 2:
                     buckets.append(current_bucket)
                 current_bucket = [item]
-                bucket_start = item.duration
+                bucket_start = val
 
         if len(current_bucket) >= 2:
             buckets.append(current_bucket)
@@ -149,42 +152,20 @@ def _bucket_by_duration(
     return buckets
 
 
+def _bucket_by_duration(
+    items: list[VideoMetadata],
+    tolerance: float = 2.0,
+) -> list[list[VideoMetadata]]:
+    """Group videos into duration buckets where members are within ±tolerance seconds."""
+    return _bucket_by_field(items, lambda v: v.duration, tolerance=tolerance)
+
+
 def _bucket_by_page_count(
     items: list[VideoMetadata],
     tolerance: int = 2,
 ) -> list[list[VideoMetadata]]:
-    """Group documents into page-count buckets where members are within ±tolerance pages.
-
-    Documents with unknown page count go into a catch-all bucket.
-    """
-    known: list[VideoMetadata] = []
-    unknown: list[VideoMetadata] = []
-    for v in items:
-        if v.page_count is not None:
-            known.append(v)
-        else:
-            unknown.append(v)
-    known.sort(key=lambda v: v.page_count)  # type: ignore[arg-type]
-
-    buckets: list[list[VideoMetadata]] = []
-    current: list[VideoMetadata] = []
-    bucket_start: int = 0
-    for v in known:
-        pc: int = v.page_count  # type: ignore[assignment]  # pre-filtered to non-None
-        if current and pc - bucket_start > tolerance * 2:
-            if len(current) >= 2:
-                buckets.append(current)
-            current = []
-            bucket_start = pc
-        if not current:
-            bucket_start = pc
-        current.append(v)
-    if len(current) >= 2:
-        buckets.append(current)
-
-    if len(unknown) >= 2:
-        buckets.append(unknown)
-    return buckets
+    """Group documents into page-count buckets where members are within ±tolerance pages."""
+    return _bucket_by_field(items, lambda v: v.page_count, tolerance=tolerance)
 
 
 def _pair_key(a: VideoMetadata, b: VideoMetadata) -> tuple[Path, Path]:
@@ -649,34 +630,28 @@ def find_duplicates(
 
     has_content = any(c.name in ("content", "audio") for c in comparators)
 
-    # --- Scoring cache: bulk lookup ---
+    # --- Pre-stat all items once (reused by scoring cache, SHA-256 cache, and write-back) ---
     cached_pairs_lookup: dict[tuple[str, str], dict] = {}
-    if cache_db is not None and config_hash is not None:
-        mtimes: dict[Path, float] = {}
-        for item in items:
-            try:
-                mtimes[item.path] = item.path.stat().st_mtime
-            except OSError:
-                pass
-        cached = cache_db.get_scored_pairs_bulk(
-            {item.path for item in items},
-            config_hash=config_hash,
-            mtimes=mtimes,
-        )
-        for entry in cached:
-            cached_pairs_lookup[(entry["path_a"], entry["path_b"])] = entry
-
-    # --- SHA-256 cache: pre-load known hashes ---
     sha256_lookup: dict[Path, str] = {}
+    mtimes: dict[Path, float] = {}
     if cache_db is not None:
         for item in items:
             try:
                 st = item.path.stat()
+                mtimes[item.path] = st.st_mtime
                 cached_sha = cache_db.get_sha256(item.path, file_size=st.st_size, mtime=st.st_mtime)
                 if cached_sha is not None:
                     sha256_lookup[item.path] = cached_sha
             except OSError:
                 pass
+        if config_hash is not None:
+            cached = cache_db.get_scored_pairs_bulk(
+                {item.path for item in items},
+                config_hash=config_hash,
+                mtimes=mtimes,
+            )
+            for entry in cached:
+                cached_pairs_lookup[(entry["path_a"], entry["path_b"])] = entry
     preloaded_sha256_paths = frozenset(sha256_lookup)
 
     # Pre-compute normalized filenames once (avoids redundant regex per comparison)
@@ -692,9 +667,9 @@ def find_duplicates(
     if mode == Mode.IMAGE:
         buckets = _bucket_by_resolution_tier(items)
     elif mode == Mode.DOCUMENT:
-        buckets = _bucket_by_page_count(items)
+        buckets = _bucket_by_field(items, lambda v: v.page_count, tolerance=2)
     else:
-        buckets = _bucket_by_duration(items)
+        buckets = _bucket_by_field(items, lambda v: v.duration)
     raw_pairs = _count_bucket_pairs(buckets)
     buckets = _refine_large_buckets(buckets)
     total_pairs = _count_bucket_pairs(buckets)
@@ -943,12 +918,11 @@ def find_duplicates(
                 kb = str(pair.file_b.path.resolve())
                 if ka > kb:
                     ka, kb = kb, ka
-                    ma = pair.file_b.path.stat().st_mtime
-                    mb = pair.file_a.path.stat().st_mtime
+                    ma = mtimes.get(pair.file_b.path, pair.file_b.path.stat().st_mtime)
+                    mb = mtimes.get(pair.file_a.path, pair.file_a.path.stat().st_mtime)
                 else:
-                    ma = pair.file_a.path.stat().st_mtime
-                    mb = pair.file_b.path.stat().st_mtime
-                # Skip pairs already in cache (came from cache hits)
+                    ma = mtimes.get(pair.file_a.path, pair.file_a.path.stat().st_mtime)
+                    mb = mtimes.get(pair.file_b.path, pair.file_b.path.stat().st_mtime)
                 if (ka, kb) in cached_pairs_lookup:
                     continue
                 detail_json = json.dumps({k: list(v) for k, v in pair.detail.items()}, separators=(",", ":"))
@@ -965,9 +939,9 @@ def find_duplicates(
                 for meta in (pair.file_a, pair.file_b):
                     if meta.path not in preloaded_sha256_paths:
                         try:
-                            sha = _get_or_compute_sha256(meta)
-                            st = meta.path.stat()
-                            cache_db.put_sha256(meta.path, file_size=st.st_size, mtime=st.st_mtime, sha256=sha)
+                            sha = _get_or_compute_sha256(meta, sha256_lookup)
+                            mtime = mtimes.get(meta.path, meta.path.stat().st_mtime)
+                            cache_db.put_sha256(meta.path, file_size=meta.file_size, mtime=mtime, sha256=sha)
                             sha256_lookup[meta.path] = sha
                         except OSError:
                             pass
@@ -982,41 +956,20 @@ def find_duplicates(
         stats["_progress_current"] = score_progress_count
         stats["_progress_total"] = total_scored
 
-    # Strip SSIM frame data from results — no longer needed after scoring.
-    # Prevents large PNG blobs from persisting through sort/group/report.
+    # Strip heavy data no longer needed after scoring (SSIM frames, CLIP
+    # embeddings, text content) in a single pass to avoid redundant list rebuilds.
+    _strip_fields: dict[str, None] = {}
     if has_ssim_frames:
-        pairs = [
-            ScoredPair(
-                file_a=replace(p.file_a, content_frames=None),
-                file_b=replace(p.file_b, content_frames=None),
-                total_score=p.total_score,
-                breakdown=p.breakdown,
-                detail=p.detail,
-            )
-            for p in pairs
-        ]
-
-    # Strip CLIP embeddings from results — no longer needed after scoring.
-    # Prevents large float32 vectors from persisting through sort/group/report.
+        _strip_fields["content_frames"] = None
     if any(p.file_a.clip_embedding is not None for p in pairs):
-        pairs = [
-            ScoredPair(
-                file_a=replace(p.file_a, clip_embedding=None),
-                file_b=replace(p.file_b, clip_embedding=None),
-                total_score=p.total_score,
-                breakdown=p.breakdown,
-                detail=p.detail,
-            )
-            for p in pairs
-        ]
-
-    # Strip text_content from results — no longer needed after scoring.
-    # Prevents large extracted text from persisting through sort/group/report.
+        _strip_fields["clip_embedding"] = None
     if any(p.file_a.text_content is not None or p.file_b.text_content is not None for p in pairs):
+        _strip_fields["text_content"] = None
+    if _strip_fields:
         pairs = [
             ScoredPair(
-                file_a=replace(p.file_a, text_content=None),
-                file_b=replace(p.file_b, text_content=None),
+                file_a=replace(p.file_a, **_strip_fields),
+                file_b=replace(p.file_b, **_strip_fields),
                 total_score=p.total_score,
                 breakdown=p.breakdown,
                 detail=p.detail,

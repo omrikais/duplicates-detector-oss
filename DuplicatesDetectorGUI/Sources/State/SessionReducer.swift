@@ -88,7 +88,7 @@ enum SessionReducer {
             // scan state and stop the file monitor so the new scan starts clean.
             let fromResults = state.phase == .results
             if fromResults {
-                resetScanState(&state)
+                state.scan = nil
             }
             state.id = UUID()
             state.scanSequence &+= 1
@@ -102,7 +102,7 @@ enum SessionReducer {
             }
             state.metadata = SessionMetadata(
                 directories: config.directories,
-                sourceLabel: config.directories.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "),
+                sourceLabel: SessionMetadata.sourceLabel(for: config.directories),
                 mode: config.mode
             )
             state.scan = ScanProgress()
@@ -129,7 +129,7 @@ enum SessionReducer {
             }
             let fromResults = state.phase == .results
             if fromResults {
-                resetScanState(&state)
+                state.scan = nil
             }
             state.id = UUID()
             state.scanSequence &+= 1
@@ -177,7 +177,7 @@ enum SessionReducer {
             state.lastScanConfig = setupConfig
             state.metadata = SessionMetadata(
                 directories: setupConfig.directories,
-                sourceLabel: setupConfig.directories.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "),
+                sourceLabel: SessionMetadata.sourceLabel(for: setupConfig.directories),
                 mode: setupConfig.mode
             )
             effects = [.loadReplayData(url)]
@@ -219,7 +219,7 @@ enum SessionReducer {
             state.lastPausedSessionId = nil
             state.metadata = SessionMetadata(
                 directories: config.directories,
-                sourceLabel: config.directories.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "),
+                sourceLabel: SessionMetadata.sourceLabel(for: config.directories),
                 mode: config.mode
             )
             effects = [.persistSessionId(nil), .runScan(config)]
@@ -250,7 +250,7 @@ enum SessionReducer {
 
         case .resumeScan:
             guard let scan = state.scan,
-                  isPausing(scan.pause) || isPaused(scan.pause) else {
+                  scan.pause.isPausing || scan.pause.isPaused else {
                 return (state, [])
             }
             // CRITICAL: Accumulate pause duration WITHOUT clearing any progress state.
@@ -271,7 +271,7 @@ enum SessionReducer {
             // CLI confirmed the pause. Transition .pausing → .paused immediately
             // (rather than waiting for the 5-second timeout). No-op if already
             // paused or if a different lifecycle phase.
-            guard isPausing(state.scan?.pause ?? .running) else { return (state, []) }
+            guard state.scan?.pause.isPausing == true else { return (state, []) }
             state.scan?.pause = .paused(sessionId: e.sessionId)
             state.scan?.timing.pauseStartTime = Date()
             state.scan?.currentSessionId = e.sessionId
@@ -282,7 +282,7 @@ enum SessionReducer {
             // state is already .running — this is a safe no-op. If an external
             // agent resumed the CLI (SIGUSR1/pause-file), transition to .running
             // without re-sending signals.
-            guard isPaused(state.scan?.pause ?? .running) else { return (state, []) }
+            guard state.scan?.pause.isPaused == true else { return (state, []) }
             if let pauseStart = state.scan?.timing.pauseStartTime {
                 state.scan?.timing.accumulatedPauseDuration += Date().timeIntervalSince(pauseStart)
             }
@@ -409,7 +409,7 @@ enum SessionReducer {
 
         case .cliStreamFailed(let error):
             let pauseURL = state.scan?.pauseFileURL
-            resetScanState(&state)
+            state.scan = nil
             // Clear stale results from a previous scan so teardown() doesn't
             // persist them under the current (new) session UUID.
             state.results = nil
@@ -430,7 +430,7 @@ enum SessionReducer {
 
         case .cliStreamCancelled:
             let pauseURL = state.scan?.pauseFileURL
-            resetScanState(&state)
+            state.scan = nil
             // Clear stale results — same rationale as cliStreamFailed above.
             state.results = nil
             state.phase = .setup
@@ -478,7 +478,7 @@ enum SessionReducer {
         case .resetToSetup:
             let pauseURL = state.scan?.pauseFileURL
             let keepWatch = state.watch != nil
-            resetScanState(&state)
+            state.scan = nil
             state.phase = .setup
             state.pendingReplayURL = nil
             state.lastPausedSessionId = nil
@@ -544,22 +544,6 @@ enum SessionReducer {
 
     // MARK: - Private Helpers
 
-    /// Check if pause state is in the paused case (any session ID).
-    private static func isPaused(_ pause: PauseState) -> Bool {
-        if case .paused = pause { return true }
-        return false
-    }
-
-    /// Check if pause state is in the pausing case (any session ID).
-    private static func isPausing(_ pause: PauseState) -> Bool {
-        if case .pausing = pause { return true }
-        return false
-    }
-
-    /// Reset all scan-related transient state fields to their initial values.
-    private static func resetScanState(_ state: inout Session) {
-        state.scan = nil
-    }
 
     /// Rebuild the stage list from CLI-reported stage names, preserving status
     /// of any stages that already had non-pending status.
@@ -630,14 +614,6 @@ enum SessionReducer {
             case "score": state.scan?.cache.scoreCacheMisses = misses
             default: break
             }
-        }
-
-        // Recompute headline totals
-        if let cache = state.scan?.cache {
-            state.scan?.cache.cacheHits = cache.metadataCacheHits + cache.contentCacheHits
-                + cache.audioCacheHits + cache.scoreCacheHits
-            state.scan?.cache.cacheMisses = cache.metadataCacheMisses + cache.contentCacheMisses
-                + cache.audioCacheMisses + cache.scoreCacheMisses
         }
     }
 
@@ -850,26 +826,11 @@ enum SessionReducer {
             state.results?.bulkCancelled = true
 
         case .bulkItemCompleted(let pairID, let actionType, let actedOnPath, let affectedPairs, let meta):
-            let keptPath = (actedOnPath == pairID.fileA) ? pairID.fileB : pairID.fileA
-            let record = ActionRecord(
-                pairID: pairID,
-                timestamp: Date(),
-                action: actionType.rawValue,
-                actedOnPath: actedOnPath,
-                keptPath: keptPath,
-                bytesFreed: meta.bytesFreed,
-                score: meta.score,
-                strategy: meta.strategy,
-                destination: meta.destination
+            let record = applyActionCompletion(
+                &state, pairID: pairID, actionType: actionType,
+                actedOnPath: actedOnPath, affectedPairs: affectedPairs, meta: meta
             )
-            for pair in affectedPairs {
-                if state.results?.resolutions[pair] == nil {
-                    state.results?.resolutions[pair] = .resolved(record)
-                }
-            }
-            state.results?.actionHistory.append(record)
             state.results?.bulkProgress?.completed += 1
-            state.results?.incrementFilterGeneration()
             effects = [.writeActionLog(record)]
 
         case .bulkFinished(let failures):
@@ -879,29 +840,16 @@ enum SessionReducer {
                     message: "\(failures.count) file(s) failed"
                 )
             }
+            state.results?.incrementFilterGeneration()
             effects = [.saveSessionDebounced, .rebuildSynthesizedViews]
 
         // MARK: Effect Completions
 
         case .fileActionCompleted(let pairID, let actionType, let actedOnPath, let affectedPairs, let meta):
-            let keptPath = (actedOnPath == pairID.fileA) ? pairID.fileB : pairID.fileA
-            let record = ActionRecord(
-                pairID: pairID,
-                timestamp: Date(),
-                action: actionType.rawValue,
-                actedOnPath: actedOnPath,
-                keptPath: keptPath,
-                bytesFreed: meta.bytesFreed,
-                score: meta.score,
-                strategy: meta.strategy,
-                destination: meta.destination
+            let record = applyActionCompletion(
+                &state, pairID: pairID, actionType: actionType,
+                actedOnPath: actedOnPath, affectedPairs: affectedPairs, meta: meta
             )
-            for pair in affectedPairs {
-                if state.results?.resolutions[pair] == nil {
-                    state.results?.resolutions[pair] = .resolved(record)
-                }
-            }
-            state.results?.actionHistory.append(record)
             state.results?.incrementFilterGeneration()
             effects = [.writeActionLog(record), .saveSessionDebounced, .rebuildSynthesizedViews]
 
@@ -986,43 +934,18 @@ enum SessionReducer {
 
         case .watchFileChanged(let path, let status):
             guard state.results != nil else { return (state, []) }
-            // Don't overwrite .actioned status with a lesser status
             if case .actioned = state.results?.fileStatuses[path] {
                 return (state, [])
             }
-            state.results?.fileStatuses[path] = status
-            propagateMissingFileResolutions(&state, statuses: [(key: path, value: status)])
-            clearStaleMissingResolutions(&state, statuses: [(key: path, value: status)])
-            state.results?.incrementFilterGeneration()
-            effects = [.rebuildSynthesizedViews]
+            effects = applyFileStatusUpdates(&state, statuses: [path: status])
 
         case .watchFileBatchChanged(let updates):
             guard state.results != nil else { return (state, []) }
-            for (path, status) in updates {
-                // Don't overwrite .actioned status
-                if case .actioned = state.results?.fileStatuses[path] {
-                    continue
-                }
-                state.results?.fileStatuses[path] = status
-            }
-            propagateMissingFileResolutions(&state, statuses: updates.map { (key: $0.key, value: $0.value) })
-            clearStaleMissingResolutions(&state, statuses: updates.map { (key: $0.key, value: $0.value) })
-            state.results?.incrementFilterGeneration()
-            effects = [.rebuildSynthesizedViews]
+            effects = applyFileStatusUpdates(&state, statuses: updates)
 
         case .fileStatusChecked(let statuses):
             guard state.results != nil else { return (state, []) }
-            for (path, status) in statuses {
-                // Don't overwrite .actioned status
-                if case .actioned = state.results?.fileStatuses[path] {
-                    continue
-                }
-                state.results?.fileStatuses[path] = status
-            }
-            propagateMissingFileResolutions(&state, statuses: statuses.map { (key: $0.key, value: $0.value) })
-            clearStaleMissingResolutions(&state, statuses: statuses.map { (key: $0.key, value: $0.value) })
-            state.results?.incrementFilterGeneration()
-            effects = [.rebuildSynthesizedViews]
+            effects = applyFileStatusUpdates(&state, statuses: statuses)
 
         default:
             break // Unreachable — routed by top-level reduce()
@@ -1064,9 +987,7 @@ enum SessionReducer {
                 )
                 state.metadata = SessionMetadata(
                     directories: config.directories,
-                    sourceLabel: config.directories.map {
-                        ($0 as NSString).lastPathComponent
-                    }.joined(separator: ", "),
+                    sourceLabel: SessionMetadata.sourceLabel(for: config.directories),
                     mode: config.mode
                 )
                 effects = [.loadReplayData(url)]
@@ -1083,7 +1004,7 @@ enum SessionReducer {
                 // replay with GUI-only fields (action, moveToDir, etc.) that
                 // seedConfigFromEnvelope() intentionally does not restore.
                 let config = state.config ?? state.lastScanConfig ?? SessionConfig()
-                resetScanState(&state)
+                state.scan = nil
                 state.pendingReplayURL = nil
                 state.lastPausedSessionId = nil
                 state.pendingSession = nil
@@ -1099,9 +1020,7 @@ enum SessionReducer {
                 )
                 state.metadata = SessionMetadata(
                     directories: config.directories,
-                    sourceLabel: config.directories.map {
-                        ($0 as NSString).lastPathComponent
-                    }.joined(separator: ", "),
+                    sourceLabel: SessionMetadata.sourceLabel(for: config.directories),
                     mode: config.mode
                 )
                 effects = [.persistSessionId(nil), .stopFileMonitor, .stopWatch, .loadReplayData(url)]
@@ -1215,6 +1134,30 @@ enum SessionReducer {
         state.results?.rawFilteredGroups(viewMode: state.display.viewMode) ?? []
     }
 
+    /// Build an ActionRecord, insert resolutions for affected pairs, and append to history.
+    /// Shared by `.bulkItemCompleted` and `.fileActionCompleted`.
+    @discardableResult
+    private static func applyActionCompletion(
+        _ state: inout Session,
+        pairID: PairID, actionType: ActionType,
+        actedOnPath: String, affectedPairs: [PairID], meta: FileActionMeta
+    ) -> ActionRecord {
+        let keptPath = (actedOnPath == pairID.fileA) ? pairID.fileB : pairID.fileA
+        let record = ActionRecord(
+            pairID: pairID, timestamp: Date(), action: actionType.rawValue,
+            actedOnPath: actedOnPath, keptPath: keptPath,
+            bytesFreed: meta.bytesFreed, score: meta.score,
+            strategy: meta.strategy, destination: meta.destination
+        )
+        for pair in affectedPairs {
+            if state.results?.resolutions[pair] == nil {
+                state.results?.resolutions[pair] = .resolved(record)
+            }
+        }
+        state.results?.actionHistory.append(record)
+        return record
+    }
+
     /// Shared logic for switching view mode to `targetMode`.
     /// Returns `nil` (no-op) when the mode is already active or the toggle precondition fails.
     private static func applyViewModeChange(
@@ -1268,6 +1211,24 @@ enum SessionReducer {
         }
 
         return []
+    }
+
+    /// Apply a batch of file status updates: merge into fileStatuses (preserving
+    /// .actioned), propagate missing-file resolutions, clear stale ones, and
+    /// increment filter generation. Returns the standard rebuild effects.
+    private static func applyFileStatusUpdates(
+        _ state: inout Session,
+        statuses: [String: FileStatus]
+    ) -> [SessionEffect] {
+        for (path, status) in statuses {
+            if case .actioned = state.results?.fileStatuses[path] { continue }
+            state.results?.fileStatuses[path] = status
+        }
+        let mapped = statuses.map { (key: $0.key, value: $0.value) }
+        propagateMissingFileResolutions(&state, statuses: mapped)
+        clearStaleMissingResolutions(&state, statuses: mapped)
+        state.results?.incrementFilterGeneration()
+        return [.rebuildSynthesizedViews]
     }
 
     /// When files are detected as missing or moved, create `.probablySolved`

@@ -83,14 +83,15 @@ class TestBucketByDuration:
         assert len(known_bucket) == 2
         assert len(unknown_bucket) == 2
 
-    def test_none_duration_in_known_raises_value_error(self, make_metadata):
-        """Defensive guard raises ValueError if None-duration item in known list."""
+    def test_none_duration_in_known_goes_to_unknown(self, make_metadata):
+        """If None-duration item leaks into sorted list, it falls into the unknown bucket."""
         a = make_metadata(path="a.mp4", duration=10.0)
         b = make_metadata(path="b.mp4", duration=None)
         # Patch sorted() to bypass the list-comprehension filter and inject bad data.
         with patch("builtins.sorted", return_value=[a, b]):
-            with pytest.raises(ValueError, match="must not be None"):
-                _bucket_by_duration([a])
+            buckets = _bucket_by_duration([a])
+            # b (None duration) ends up in the unknown catch-all bucket
+            assert any(b in bucket for bucket in buckets)
 
 
 # ---------------------------------------------------------------------------

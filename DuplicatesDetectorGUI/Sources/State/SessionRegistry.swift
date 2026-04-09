@@ -200,6 +200,21 @@ public actor SessionRegistry {
             self.spaceRecoverable = spaceRecoverable
             self.groupsCount = groupsCount
         }
+
+        init(from persisted: PersistedSession) {
+            self.init(
+                id: persisted.id,
+                createdAt: persisted.metadata.createdAt,
+                directories: persisted.metadata.directories,
+                mode: persisted.metadata.mode,
+                pairCount: persisted.metadata.pairCount,
+                sourceLabel: persisted.metadata.sourceLabel,
+                hasWatchConfig: persisted.watchConfig != nil,
+                filesScanned: persisted.metadata.filesScanned,
+                spaceRecoverable: persisted.metadata.spaceRecoverable,
+                groupsCount: persisted.metadata.groupsCount
+            )
+        }
     }
 
     // MARK: - Errors
@@ -303,18 +318,7 @@ public actor SessionRegistry {
         }
 
         // Update index
-        let entry = Entry(
-            id: persisted.id,
-            createdAt: persisted.metadata.createdAt,
-            directories: persisted.metadata.directories,
-            mode: persisted.metadata.mode,
-            pairCount: persisted.metadata.pairCount,
-            sourceLabel: persisted.metadata.sourceLabel,
-            hasWatchConfig: persisted.watchConfig != nil,
-            filesScanned: persisted.metadata.filesScanned,
-            spaceRecoverable: persisted.metadata.spaceRecoverable,
-            groupsCount: persisted.metadata.groupsCount
-        )
+        let entry = Entry(from: persisted)
 
         // Replace existing entry with same ID, or append
         if let idx = entries.firstIndex(where: { $0.id == persisted.id }) {
@@ -443,19 +447,7 @@ public actor SessionRegistry {
             do {
                 let data = try Data(contentsOf: fileURL)
                 let session = try decoder.decode(PersistedSession.self, from: data)
-                let entry = Entry(
-                    id: session.id,
-                    createdAt: session.metadata.createdAt,
-                    directories: session.metadata.directories,
-                    mode: session.metadata.mode,
-                    pairCount: session.metadata.pairCount,
-                    sourceLabel: session.metadata.sourceLabel,
-                    hasWatchConfig: session.watchConfig != nil,
-                    filesScanned: session.metadata.filesScanned,
-                    spaceRecoverable: session.metadata.spaceRecoverable,
-                    groupsCount: session.metadata.groupsCount
-                )
-                rebuilt.append(entry)
+                rebuilt.append(Entry(from: session))
             } catch {
                 Self.logger.warning(
                     "Skipping unreadable session file \(fileURL.lastPathComponent): \(error.localizedDescription)"
@@ -522,19 +514,7 @@ public actor SessionRegistry {
             entries = (try? decoder.decode([Entry].self, from: data)) ?? []
         }
 
-        let newEntry = Entry(
-            id: persisted.id,
-            createdAt: persisted.metadata.createdAt,
-            directories: persisted.metadata.directories,
-            mode: persisted.metadata.mode,
-            pairCount: persisted.metadata.pairCount,
-            sourceLabel: persisted.metadata.sourceLabel,
-            hasWatchConfig: persisted.watchConfig != nil,
-            filesScanned: persisted.metadata.filesScanned,
-            spaceRecoverable: persisted.metadata.spaceRecoverable,
-            groupsCount: persisted.metadata.groupsCount
-        )
-
+        let newEntry = Entry(from: persisted)
         if let idx = entries.firstIndex(where: { $0.id == persisted.id }) {
             entries[idx] = newEntry
         } else {

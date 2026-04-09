@@ -207,6 +207,11 @@ struct WatchState: Equatable, Sendable {
 struct SessionMetadata: Codable, Equatable, Sendable {
     /// Canonical source label for Photos Library scans.
     static let photosLibraryLabel = "Photos Library"
+
+    /// Derive a source label from directory paths (last path component of each, comma-joined).
+    static func sourceLabel(for directories: [String]) -> String {
+        directories.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+    }
     /// When the session was created.
     var createdAt: Date
     /// Source directories for this session.
@@ -293,6 +298,16 @@ public enum PauseState: Equatable, Sendable {
     case running
     case pausing(sessionId: String?)
     case paused(sessionId: String?)
+
+    var isPausing: Bool {
+        if case .pausing = self { return true }
+        return false
+    }
+
+    var isPaused: Bool {
+        if case .paused = self { return true }
+        return false
+    }
 }
 
 // MARK: - ScanTiming
@@ -321,8 +336,6 @@ struct ScanTiming: Equatable, Sendable {
 
 /// Cache hit/miss counters accumulated during a scan.
 struct CacheStats: Equatable, Sendable {
-    var cacheHits: Int = 0
-    var cacheMisses: Int = 0
     var cacheTimeSaved: Double?
     var metadataCacheHits: Int = 0
     var metadataCacheMisses: Int = 0
@@ -332,6 +345,13 @@ struct CacheStats: Equatable, Sendable {
     var audioCacheMisses: Int = 0
     var scoreCacheHits: Int = 0
     var scoreCacheMisses: Int = 0
+
+    var cacheHits: Int {
+        metadataCacheHits + contentCacheHits + audioCacheHits + scoreCacheHits
+    }
+    var cacheMisses: Int {
+        metadataCacheMisses + contentCacheMisses + audioCacheMisses + scoreCacheMisses
+    }
 }
 
 // MARK: - ScanProgress
@@ -421,21 +441,27 @@ struct ScanProgress: Equatable, Sendable {
 
     // MARK: - Computed Properties
 
-    /// Overall scan progress, computed from stage states. Never stored -- always derived.
-    var overallProgress: Double {
-        computeWeightedProgress().total
+    /// Progress breakdown computed once from stage states.
+    struct ProgressBreakdown {
+        let total: Double
+        let completed: Double
+        var active: Double { max(0, total - completed) }
     }
+
+    /// Compute overall, completed, and active progress in a single pass.
+    var progress: ProgressBreakdown {
+        let p = computeWeightedProgress()
+        return ProgressBreakdown(total: p.total, completed: p.completed)
+    }
+
+    /// Overall scan progress, computed from stage states.
+    var overallProgress: Double { progress.total }
 
     /// Fraction of overall progress from fully completed stages (green bar segment).
-    var completedProgress: Double {
-        computeWeightedProgress().completed
-    }
+    var completedProgress: Double { progress.completed }
 
     /// Fraction of overall progress from the active stage's partial completion (blue bar segment).
-    var activeProgress: Double {
-        let p = computeWeightedProgress()
-        return max(0, p.total - p.completed)
-    }
+    var activeProgress: Double { progress.active }
 
     /// Whether all stages have completed.
     var isComplete: Bool {
@@ -806,9 +832,10 @@ struct ResultsSnapshot: Equatable, Sendable {
         } else {
             return []
         }
+        let actioned = actionedPaths
         let active = pairs.filter { pair in
             let pairID = PairIdentifier(fileA: pair.fileA, fileB: pair.fileB)
-            let isActioned = actionedPaths.contains(pair.fileA) || actionedPaths.contains(pair.fileB)
+            let isActioned = actioned.contains(pair.fileA) || actioned.contains(pair.fileB)
             let hasResolution = resolutions[pairID] != nil
             if isActioned && !hasResolution { return false }
             if ignoredPairs.contains(pairID) { return false }
@@ -842,10 +869,11 @@ struct ResultsSnapshot: Equatable, Sendable {
             return []
         }
         guard !groups.isEmpty else { return [] }
+        let actioned = actionedPaths
         let active = groups.filter { group in
             let candidates = group.files.filter { $0.path != group.keep && !$0.isReference }
             let allActionedWithoutResolution = !candidates.isEmpty && candidates.allSatisfy { file in
-                actionedPaths.contains(file.path)
+                actioned.contains(file.path)
             } && !isGroupFullyResolved(group)
             if allActionedWithoutResolution { return false }
             let allIgnored = !group.pairs.isEmpty && group.pairs.allSatisfy { gp in

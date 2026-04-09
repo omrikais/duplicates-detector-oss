@@ -17,7 +17,8 @@ from PIL import Image
 from duplicates_detector.metadata import VideoMetadata
 from duplicates_detector.progress import make_progress
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 
 if TYPE_CHECKING:
     from duplicates_detector.cache_db import CacheDB
@@ -276,6 +277,13 @@ def _extract_frames_from_ffmpeg(
     return tuple(frames) if frames else None
 
 
+def _compute_timeout(duration: float | None) -> int:
+    """Wall-clock timeout for frame extraction, scaling with video duration."""
+    if duration is not None and duration > 0:
+        return max(_MIN_TIMEOUT, int(duration / 60 * _TIMEOUT_PER_MINUTE) + _MIN_TIMEOUT)
+    return _MIN_TIMEOUT
+
+
 def extract_frames(
     path: Path,
     interval: float = 2.0,
@@ -283,8 +291,6 @@ def extract_frames(
 ) -> tuple[bytes, ...] | None:
     """Extract raw PNG frames from a video at fixed intervals.
 
-    Uses the same ffmpeg extraction approach as the legacy interval-based
-    extraction but returns raw frame bytes instead of perceptual hashes.
     Used by the SSIM comparison path.
     """
     cmd = [
@@ -299,12 +305,7 @@ def extract_frames(
         "png",
         "-",
     ]
-
-    timeout = _MIN_TIMEOUT
-    if duration is not None and duration > 0:
-        timeout = max(_MIN_TIMEOUT, int(duration / 60 * _TIMEOUT_PER_MINUTE) + _MIN_TIMEOUT)
-
-    return _extract_frames_from_ffmpeg(cmd, timeout)
+    return _extract_frames_from_ffmpeg(cmd, _compute_timeout(duration))
 
 
 def extract_frames_scene(
@@ -315,8 +316,6 @@ def extract_frames_scene(
 ) -> tuple[bytes, ...] | None:
     """Extract raw PNG frames at scene changes, with interval fallback.
 
-    Uses the same ffmpeg scene-detection approach as the legacy scene-based
-    extraction but returns raw frame bytes instead of perceptual hashes.
     Falls back to interval-based extraction when scene detection yields
     fewer than ``_MIN_SCENE_FRAMES`` frames.
     """
@@ -334,12 +333,7 @@ def extract_frames_scene(
         "png",
         "-",
     ]
-
-    timeout = _MIN_TIMEOUT
-    if duration is not None and duration > 0:
-        timeout = max(_MIN_TIMEOUT, int(duration / 60 * _TIMEOUT_PER_MINUTE) + _MIN_TIMEOUT)
-
-    result = _extract_frames_from_ffmpeg(cmd, timeout)
+    result = _extract_frames_from_ffmpeg(cmd, _compute_timeout(duration))
 
     if result is None or len(result) < _MIN_SCENE_FRAMES:
         return extract_frames(path, interval=fallback_interval, duration=duration)
@@ -411,6 +405,55 @@ def compare_ssim_frames(
     return best
 
 
+def _extract_all_frames(
+    metadata: list[VideoMetadata],
+    submit_fn: Callable,
+    *,
+    workers: int = 0,
+    quiet: bool = False,
+    progress_emitter: ProgressEmitter | None = None,
+) -> list[VideoMetadata]:
+    """Core SSIM frame extraction loop shared by video and image paths.
+
+    *submit_fn(executor, idx, meta)* submits a single extraction job and
+    returns a Future. The rest (progress, stage lifecycle, result assembly)
+    is handled here.
+    """
+    if workers <= 0:
+        workers = min((os.cpu_count() or 4) * 2, 32)
+
+    if progress_emitter is not None:
+        progress_emitter.stage_start("ssim_extract", total=len(metadata))
+    ssim_start = time.monotonic()
+
+    results: list[VideoMetadata] = [None] * len(metadata)  # type: ignore[list-item]
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_idx = {submit_fn(executor, idx, m): idx for idx, m in enumerate(metadata)}
+
+        with make_progress(quiet=quiet, progress_emitter=progress_emitter) as progress:
+            task = progress.add_task("Extracting frames (SSIM)", total=len(metadata))
+
+            for completed, future in enumerate(as_completed(future_to_idx), 1):
+                idx = future_to_idx[future]
+                content_frames = future.result()
+                results[idx] = replace(metadata[idx], content_frames=content_frames)
+                progress.advance(task)
+                if progress_emitter is not None:
+                    progress_emitter.progress(
+                        "ssim_extract",
+                        current=completed,
+                        total=len(metadata),
+                        file=str(metadata[idx].path),
+                    )
+
+    if progress_emitter is not None:
+        progress_emitter.progress("ssim_extract", current=len(metadata), total=len(metadata), force=True)
+        progress_emitter.stage_end("ssim_extract", total=len(metadata), elapsed=time.monotonic() - ssim_start)
+
+    return results
+
+
 def extract_all_ssim_frames(
     metadata: list[VideoMetadata],
     *,
@@ -422,66 +465,25 @@ def extract_all_ssim_frames(
     scene_threshold: float = 0.3,
     progress_emitter: ProgressEmitter | None = None,
 ) -> list[VideoMetadata]:
-    """Extract raw frames for SSIM comparison from all videos in parallel.
-
-    No cache — SSIM frame data is too large to cache efficiently.
-    Returns a new list of VideoMetadata with ``content_frames`` populated.
-    """
-    if workers <= 0:
-        workers = min((os.cpu_count() or 4) * 2, 32)
-
+    """Extract raw frames for SSIM comparison from all videos in parallel."""
     check_ffmpeg()
 
-    if progress_emitter is not None:
-        progress_emitter.stage_start("ssim_extract", total=len(metadata))
-    ssim_start = time.monotonic()
+    if strategy == "scene":
 
-    results: list[VideoMetadata] = [None] * len(metadata)  # type: ignore[list-item]
+        def _submit(ex: ThreadPoolExecutor, _idx: int, m: VideoMetadata) -> Any:
+            return ex.submit(
+                extract_frames_scene,
+                m.path,
+                threshold=scene_threshold,
+                duration=m.duration,
+                fallback_interval=interval,
+            )
+    else:
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        if strategy == "scene":
-            future_to_idx = {
-                executor.submit(
-                    extract_frames_scene,
-                    m.path,
-                    threshold=scene_threshold,
-                    duration=m.duration,
-                    fallback_interval=interval,
-                ): idx
-                for idx, m in enumerate(metadata)
-            }
-        else:
-            future_to_idx = {
-                executor.submit(
-                    extract_frames,
-                    m.path,
-                    interval=interval,
-                    duration=m.duration,
-                ): idx
-                for idx, m in enumerate(metadata)
-            }
+        def _submit(ex: ThreadPoolExecutor, _idx: int, m: VideoMetadata) -> Any:
+            return ex.submit(extract_frames, m.path, interval=interval, duration=m.duration)
 
-        with make_progress(quiet=quiet, progress_emitter=progress_emitter) as progress:
-            task = progress.add_task("Extracting frames (SSIM)", total=len(metadata))
-
-            for completed, future in enumerate(as_completed(future_to_idx), 1):
-                idx = future_to_idx[future]
-                content_frames = future.result()
-                results[idx] = replace(metadata[idx], content_frames=content_frames)
-                progress.advance(task)
-                if progress_emitter is not None:
-                    progress_emitter.progress(
-                        "ssim_extract",
-                        current=completed,
-                        total=len(metadata),
-                        file=str(metadata[idx].path),
-                    )
-
-    if progress_emitter is not None:
-        progress_emitter.progress("ssim_extract", current=len(metadata), total=len(metadata), force=True)
-        progress_emitter.stage_end("ssim_extract", total=len(metadata), elapsed=time.monotonic() - ssim_start)
-
-    return results
+    return _extract_all_frames(metadata, _submit, workers=workers, quiet=quiet, progress_emitter=progress_emitter)
 
 
 def extract_all_image_ssim_frames(
@@ -492,44 +494,14 @@ def extract_all_image_ssim_frames(
     quiet: bool = False,
     progress_emitter: ProgressEmitter | None = None,
 ) -> list[VideoMetadata]:
-    """Extract raw frames for SSIM comparison from all images in parallel.
-
-    No cache — SSIM frame data is too large to cache efficiently.
-    Uses PIL (no ffmpeg required).
-    """
-    if workers <= 0:
-        workers = min((os.cpu_count() or 4) * 2, 32)
-
-    if progress_emitter is not None:
-        progress_emitter.stage_start("ssim_extract", total=len(metadata))
-    ssim_start = time.monotonic()
-
-    results: list[VideoMetadata] = [None] * len(metadata)  # type: ignore[list-item]
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_to_idx = {executor.submit(extract_image_frame, m.path): idx for idx, m in enumerate(metadata)}
-
-        with make_progress(quiet=quiet, progress_emitter=progress_emitter) as progress:
-            task = progress.add_task("Extracting frames (SSIM)", total=len(metadata))
-
-            for completed, future in enumerate(as_completed(future_to_idx), 1):
-                idx = future_to_idx[future]
-                content_frames = future.result()
-                results[idx] = replace(metadata[idx], content_frames=content_frames)
-                progress.advance(task)
-                if progress_emitter is not None:
-                    progress_emitter.progress(
-                        "ssim_extract",
-                        current=completed,
-                        total=len(metadata),
-                        file=str(metadata[idx].path),
-                    )
-
-    if progress_emitter is not None:
-        progress_emitter.progress("ssim_extract", current=len(metadata), total=len(metadata), force=True)
-        progress_emitter.stage_end("ssim_extract", total=len(metadata), elapsed=time.monotonic() - ssim_start)
-
-    return results
+    """Extract raw frames for SSIM comparison from all images in parallel."""
+    return _extract_all_frames(
+        metadata,
+        lambda ex, _idx, m: ex.submit(extract_image_frame, m.path),
+        workers=workers,
+        quiet=quiet,
+        progress_emitter=progress_emitter,
+    )
 
 
 # ---------------------------------------------------------------------------

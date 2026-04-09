@@ -619,16 +619,7 @@ extension SessionStore {
 
         filteredGroups = results.computeFilteredGroups(
             display: session.display,
-            isGroupFullyResolved: { [resolvedOrMissingPaths] group in
-                let candidates: [GroupFile]
-                if let keepPath = group.keep {
-                    candidates = group.files.filter { $0.path != keepPath && !$0.isReference }
-                } else {
-                    candidates = group.files.filter { !$0.isReference }
-                }
-                guard !candidates.isEmpty else { return false }
-                return candidates.allSatisfy { resolvedOrMissingPaths.contains($0.path) }
-            }
+            isGroupFullyResolved: { self.isGroupFullyResolved($0) }
         )
     }
 }
@@ -1719,6 +1710,13 @@ extension SessionStore {
         let envelope = session.results?.envelope
         let dest = session.display.moveDestination
 
+        // Build lookup tables once for the entire bulk operation instead of
+        // calling synthesizePairs(from:) per item via findAffectedPairs/pairScore.
+        let pathIndex = Self.buildPathToPairsIndex(envelope: envelope)
+        let scoreIndex = Self.buildPairScoreIndex(envelope: envelope)
+        let strategy = session.results?.envelope.args.keep
+        let destPath = dest?.path
+
         bulkActionTask = Task {
             var failures: [String] = []
 
@@ -1743,15 +1741,14 @@ extension SessionStore {
 
                 do {
                     let fileSize = Self.fileSizeAtPath(path)
-                    let baseMeta = self.buildFileActionMeta(pairID: pairID, dest: dest, envelope: envelope)
                     _ = try await Task.detached(priority: .userInitiated) {
                         try Self.performFileOperation(action: actionType, path: path, destination: dest)
                     }.value
                     guard !Task.isCancelled else { break }
-                    let affected = Self.findAffectedPairs(path: path, envelope: envelope)
+                    let affected = pathIndex[path] ?? []
                     let meta = FileActionMeta(
-                        bytesFreed: fileSize, score: baseMeta.score,
-                        strategy: baseMeta.strategy, destination: baseMeta.destination
+                        bytesFreed: fileSize, score: scoreIndex[pairID] ?? 0,
+                        strategy: strategy, destination: destPath
                     )
                     self.send(.bulkItemCompleted(pairID, actionType, path, affected, meta))
                 } catch {
@@ -1770,13 +1767,10 @@ extension SessionStore {
                     try await PhotoKitBridge.shared.deleteAssets(assetIDs)
                     for item in photosItems {
                         guard !Task.isCancelled else { break }
-                        let affected = Self.findAffectedPairs(path: item.filePath, envelope: envelope)
-                        let baseMeta = self.buildFileActionMeta(
-                            pairID: item.pairID, dest: dest, envelope: envelope
-                        )
+                        let affected = pathIndex[item.filePath] ?? []
                         let meta = FileActionMeta(
-                            bytesFreed: 0, score: baseMeta.score,
-                            strategy: baseMeta.strategy, destination: baseMeta.destination
+                            bytesFreed: 0, score: scoreIndex[item.pairID] ?? 0,
+                            strategy: strategy, destination: destPath
                         )
                         self.send(.bulkItemCompleted(
                             item.pairID, item.action, item.filePath, affected, meta
@@ -1868,6 +1862,39 @@ extension SessionStore {
         return Int(match?.score ?? 0)
     }
 
+    /// Build a path → [PairIdentifier] index for O(1) lookups during bulk operations.
+    nonisolated private static func buildPathToPairsIndex(envelope: ScanEnvelope?) -> [String: [PairIdentifier]] {
+        guard let envelope else { return [:] }
+        let allPairs: [PairResult]
+        switch envelope.content {
+        case .pairs(let p): allPairs = p
+        case .groups(let g): allPairs = ResultsSnapshot.synthesizePairs(from: g)
+        }
+        var index: [String: [PairIdentifier]] = [:]
+        for pair in allPairs {
+            let id = PairIdentifier(fileA: pair.fileA, fileB: pair.fileB)
+            index[pair.fileA, default: []].append(id)
+            index[pair.fileB, default: []].append(id)
+        }
+        return index
+    }
+
+    /// Build a PairID → score index for O(1) lookups during bulk operations.
+    nonisolated private static func buildPairScoreIndex(envelope: ScanEnvelope?) -> [PairIdentifier: Int] {
+        guard let envelope else { return [:] }
+        let allPairs: [PairResult]
+        switch envelope.content {
+        case .pairs(let p): allPairs = p
+        case .groups(let g): allPairs = ResultsSnapshot.synthesizePairs(from: g)
+        }
+        var index: [PairIdentifier: Int] = [:]
+        for pair in allPairs {
+            let id = PairIdentifier(fileA: pair.fileA, fileB: pair.fileB)
+            index[id] = Int(pair.score)
+        }
+        return index
+    }
+
     /// Read file size (bytes) at a path, returning nil if the file doesn't exist.
     nonisolated private static func fileSizeAtPath(_ path: String) -> Int? {
         (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? nil
@@ -1948,7 +1975,7 @@ extension SessionStore {
     nonisolated static func performFileOperation(
         action: ActionType, path: String, destination: URL?
     ) throws -> (actionName: String, size: Int, destinationPath: String?) {
-        let size = fileSize(at: path)
+        let size = fileSizeAtPath(path) ?? 0
         switch action {
         case .trash:
             var resultingURL: NSURL?
@@ -1992,11 +2019,6 @@ extension SessionStore {
                 NSLocalizedDescriptionKey: "\(action.displayName) is not supported for Photos Library assets",
             ])
         }
-    }
-
-    /// Get the file size at a path, returning 0 on failure.
-    nonisolated private static func fileSize(at path: String) -> Int {
-        (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
     }
 
     /// Compute a unique destination path without requiring actor isolation.
