@@ -150,13 +150,9 @@ def _controller_stage(controller: PipelineController | None, stage: str):
 
     controller.wait_if_paused_blocking()
     controller.enter_stage(stage)
-    try:
-        yield
-        controller.wait_if_paused_blocking()
-    except Exception:
-        raise
-    else:
-        controller.complete_stage(stage)
+    yield
+    controller.wait_if_paused_blocking()
+    controller.complete_stage(stage)
 
 
 class _PauseAwareTextWriter:
@@ -269,6 +265,59 @@ def _resolve_auto_pipeline_extensions(args: argparse.Namespace) -> tuple[frozens
     return video_extensions, image_extensions
 
 
+def _parse_filter_args(
+    args: argparse.Namespace,
+) -> tuple[tuple[int, int] | None, tuple[int, int] | None, int | None, int | None, frozenset[str] | None]:
+    """Parse resolution/bitrate/codec filter args, exiting on invalid values.
+
+    Returns (min_resolution, max_resolution, min_bitrate, max_bitrate, codecs).
+    """
+    min_resolution = None
+    max_resolution = None
+    min_bitrate = None
+    max_bitrate = None
+    try:
+        if args.min_resolution:
+            min_resolution = parse_resolution(args.min_resolution)
+        if args.max_resolution:
+            max_resolution = parse_resolution(args.max_resolution)
+        if args.min_bitrate:
+            min_bitrate = parse_bitrate(args.min_bitrate)
+        if args.max_bitrate:
+            max_bitrate = parse_bitrate(args.max_bitrate)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+    codecs = frozenset(c.strip().lower() for c in args.codec.split(",")) if args.codec else None
+    return min_resolution, max_resolution, min_bitrate, max_bitrate, codecs
+
+
+def _resolve_reference_dirs(args: argparse.Namespace) -> list[Path] | None:
+    """Return deduplicated reference dirs (original + resolved), or None."""
+    if not args.reference:
+        return None
+    return list(dict.fromkeys(p for d in args.reference for p in (Path(d), Path(d).resolve())))
+
+
+def _fill_cache_stats(
+    pstats: PipelineStats,
+    cache_db: object | None,
+    has_content: bool = False,
+) -> None:
+    """Populate *pstats* cache hit/miss fields from *cache_db*."""
+    if cache_db is None:
+        pstats.metadata_cache_enabled = False
+        return
+    stats = cache_db.stats()  # type: ignore[union-attr]
+    pstats.metadata_cache_hits = stats.get("metadata_hits", 0)
+    pstats.metadata_cache_misses = stats.get("metadata_misses", 0)
+    pstats.metadata_cache_enabled = True
+    if has_content:
+        pstats.content_cache_enabled = True
+        pstats.content_cache_hits = stats.get("content_hits", 0)
+        pstats.content_cache_misses = stats.get("content_misses", 0)
+
+
 def _discover_seeded_paths(
     args: argparse.Namespace,
     mode: str,
@@ -293,41 +342,38 @@ def _discover_seeded_paths(
     if progress_emitter is not None:
         progress_emitter.stage_start("scan")
 
-    try:
-        for path in _scan_files_iter(
-            directories,
-            recursive=recursive,
-            extensions=extensions,
-            exclude=exclude,
-            pause_waiter=controller.wait_if_paused_blocking,
-        ):
-            if controller.is_cancelled:
-                break
-            paths.append(path)
-            controller.files_discovered = len(paths)
-            if mode == Mode.AUTO:
-                suffix = path.suffix.lower()
-                if suffix in video_extensions:
-                    counts_by_mode["video"] = counts_by_mode.get("video", 0) + 1
-                elif suffix in image_extensions:
-                    counts_by_mode["image"] = counts_by_mode.get("image", 0) + 1
-            if progress_emitter is not None:
-                progress_emitter.progress("scan", current=len(paths))
-    except Exception:
-        raise
-    else:
-        elapsed = time.monotonic() - scan_start
-        if mode != Mode.AUTO:
-            counts_by_mode[mode] = len(paths)
-        else:
-            counts_by_mode.setdefault("video", 0)
-            counts_by_mode.setdefault("image", 0)
-
+    for path in _scan_files_iter(
+        directories,
+        recursive=recursive,
+        extensions=extensions,
+        exclude=exclude,
+        pause_waiter=controller.wait_if_paused_blocking,
+    ):
+        if controller.is_cancelled:
+            break
+        paths.append(path)
+        controller.files_discovered = len(paths)
+        if mode == Mode.AUTO:
+            suffix = path.suffix.lower()
+            if suffix in video_extensions:
+                counts_by_mode["video"] = counts_by_mode.get("video", 0) + 1
+            elif suffix in image_extensions:
+                counts_by_mode["image"] = counts_by_mode.get("image", 0) + 1
         if progress_emitter is not None:
-            progress_emitter.progress("scan", current=len(paths), total=len(paths), force=True)
-            progress_emitter.stage_end("scan", total=len(paths), elapsed=elapsed)
-        controller.complete_stage("scan")
-        return paths, counts_by_mode, elapsed
+            progress_emitter.progress("scan", current=len(paths))
+
+    elapsed = time.monotonic() - scan_start
+    if mode != Mode.AUTO:
+        counts_by_mode[mode] = len(paths)
+    else:
+        counts_by_mode.setdefault("video", 0)
+        counts_by_mode.setdefault("image", 0)
+
+    if progress_emitter is not None:
+        progress_emitter.progress("scan", current=len(paths), total=len(paths), force=True)
+        progress_emitter.stage_end("scan", total=len(paths), elapsed=elapsed)
+    controller.complete_stage("scan")
+    return paths, counts_by_mode, elapsed
 
 
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
@@ -1448,33 +1494,8 @@ def _run_single_pipeline(
             cache_db=cache_db,
         )
 
-    # Parse resolution/bitrate/codec filter args for pipeline config
-    min_resolution = None
-    max_resolution = None
-    min_bitrate = None
-    max_bitrate = None
-    codecs = None
-    try:
-        if args.min_resolution:
-            min_resolution = parse_resolution(args.min_resolution)
-        if args.max_resolution:
-            max_resolution = parse_resolution(args.max_resolution)
-        if args.min_bitrate:
-            min_bitrate = parse_bitrate(args.min_bitrate)
-        if args.max_bitrate:
-            max_bitrate = parse_bitrate(args.max_bitrate)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        sys.exit(1)
-    if args.codec:
-        codecs = frozenset(c.strip().lower() for c in args.codec.split(","))
-
-    # Build reference dirs
-    reference_dirs: list[Path] | None = None
-    if args.reference:
-        reference_dirs = list(dict.fromkeys(p for d in args.reference for p in (Path(d), Path(d).resolve())))
-
-    # Determine extensions
+    min_resolution, max_resolution, min_bitrate, max_bitrate, codecs = _parse_filter_args(args)
+    reference_dirs = _resolve_reference_dirs(args)
     extensions = _resolve_scan_extensions(args, mode)
 
     # Use the provided controller or create a fresh one
@@ -1548,17 +1569,7 @@ def _run_single_pipeline(
     pstats.total_pairs_scored = result.total_pairs_scored
     pstats.files_after_filter = result.files_after_filter
     pstats.content_mode = bool(args.content)
-    if cache_db is not None:
-        stats = cache_db.stats()
-        pstats.metadata_cache_hits = stats.get("metadata_hits", 0)
-        pstats.metadata_cache_misses = stats.get("metadata_misses", 0)
-        pstats.metadata_cache_enabled = True
-        if args.content:
-            pstats.content_cache_enabled = True
-            pstats.content_cache_hits = stats.get("content_hits", 0)
-            pstats.content_cache_misses = stats.get("content_misses", 0)
-    else:
-        pstats.metadata_cache_enabled = False
+    _fill_cache_stats(pstats, cache_db, has_content=bool(args.content))
 
     # Empty list is a valid result (no duplicates found); only return None
     # for the SSIM fallback path where metadata < 2 is an early exit.
@@ -1584,18 +1595,8 @@ def _run_single_pipeline_ssim(
     """
     from duplicates_detector.metadata import extract_all, extract_all_audio, extract_all_images
 
-    # Determine extensions and scan directories
     all_dirs = args.directories + (args.reference or [])
-    if args.extensions:
-        extensions: frozenset[str] | None = frozenset(
-            f".{ext.strip().lstrip('.').lower()}" for ext in args.extensions.split(",")
-        )
-    elif mode == Mode.IMAGE:
-        extensions = DEFAULT_IMAGE_EXTENSIONS
-    elif mode == Mode.AUDIO:
-        extensions = DEFAULT_AUDIO_EXTENSIONS
-    else:
-        extensions = None
+    extensions: frozenset[str] = _resolve_scan_extensions(args, mode)
 
     if progress_emitter is not None:
         progress_emitter.stage_start("scan")
@@ -1648,39 +1649,14 @@ def _run_single_pipeline_ssim(
     pstats.extract_time = time.monotonic() - t0
     pstats.extraction_failures = len(files) - len(metadata)
 
-    if cache_db is not None:
-        stats = cache_db.stats()
-        pstats.metadata_cache_hits = stats.get("metadata_hits", 0)
-        pstats.metadata_cache_misses = stats.get("metadata_misses", 0)
-        pstats.metadata_cache_enabled = True
-    else:
-        pstats.metadata_cache_enabled = False
+    _fill_cache_stats(pstats, cache_db)
 
     # Tag reference files
-    if args.reference:
-        ref_dirs = list(dict.fromkeys(p for d in args.reference for p in (Path(d), Path(d).resolve())))
+    ref_dirs = _resolve_reference_dirs(args)
+    if ref_dirs:
         metadata = [replace(m, is_reference=True) if _is_reference(m.path, ref_dirs) else m for m in metadata]
 
-    # Filter
-    min_resolution = None
-    max_resolution = None
-    min_bitrate = None
-    max_bitrate = None
-    codecs_set = None
-    try:
-        if args.min_resolution:
-            min_resolution = parse_resolution(args.min_resolution)
-        if args.max_resolution:
-            max_resolution = parse_resolution(args.max_resolution)
-        if args.min_bitrate:
-            min_bitrate = parse_bitrate(args.min_bitrate)
-        if args.max_bitrate:
-            max_bitrate = parse_bitrate(args.max_bitrate)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        sys.exit(1)
-    if args.codec:
-        codecs_set = frozenset(c.strip().lower() for c in args.codec.split(","))
+    min_resolution, max_resolution, min_bitrate, max_bitrate, codecs_set = _parse_filter_args(args)
 
     if progress_emitter is not None:
         progress_emitter.stage_start("filter")
@@ -1820,31 +1796,8 @@ def _run_auto_pipeline(
     from duplicates_detector.pipeline import _CANONICAL_STAGES, compute_visible_stage_set
     from duplicates_detector.scorer import compute_config_hash
 
-    # Parse filter args (shared across both sub-pipelines)
-    min_resolution = None
-    max_resolution = None
-    min_bitrate = None
-    max_bitrate = None
-    codecs = None
-    try:
-        if args.min_resolution:
-            min_resolution = parse_resolution(args.min_resolution)
-        if args.max_resolution:
-            max_resolution = parse_resolution(args.max_resolution)
-        if args.min_bitrate:
-            min_bitrate = parse_bitrate(args.min_bitrate)
-        if args.max_bitrate:
-            max_bitrate = parse_bitrate(args.max_bitrate)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        sys.exit(1)
-    if args.codec:
-        codecs = frozenset(c.strip().lower() for c in args.codec.split(","))
-
-    # Reference dirs
-    reference_dirs: list[Path] | None = None
-    if args.reference:
-        reference_dirs = list(dict.fromkeys(p for d in args.reference for p in (Path(d), Path(d).resolve())))
+    min_resolution, max_resolution, min_bitrate, max_bitrate, codecs = _parse_filter_args(args)
+    reference_dirs = _resolve_reference_dirs(args)
 
     audio = bool(args.audio)
     content_method = getattr(args, "content_method", None) or "phash"
@@ -2033,17 +1986,7 @@ def _run_auto_pipeline(
     pstats.files_after_filter = video_result.files_after_filter + image_result.files_after_filter
     pstats.extract_time = max(video_result.extract_time, image_result.extract_time)
     pstats.scoring_time = max(video_result.scoring_time, image_result.scoring_time)
-    if cache_db is not None:
-        stats = cache_db.stats()
-        pstats.metadata_cache_hits = stats.get("metadata_hits", 0)
-        pstats.metadata_cache_misses = stats.get("metadata_misses", 0)
-        pstats.metadata_cache_enabled = True
-        if args.content:
-            pstats.content_cache_enabled = True
-            pstats.content_cache_hits = stats.get("content_hits", 0)
-            pstats.content_cache_misses = stats.get("content_misses", 0)
-    else:
-        pstats.metadata_cache_enabled = False
+    _fill_cache_stats(pstats, cache_db, has_content=bool(args.content))
 
     return pairs
 
@@ -2127,39 +2070,14 @@ def _run_auto_pipeline_ssim(
     pstats.extract_time = time.monotonic() - t0
     pstats.extraction_failures = (len(video_paths) + len(image_paths)) - len(all_metadata)
 
-    if cache_db is not None:
-        db_stats = cache_db.stats()
-        pstats.metadata_cache_hits = db_stats.get("metadata_hits", 0)
-        pstats.metadata_cache_misses = db_stats.get("metadata_misses", 0)
-        pstats.metadata_cache_enabled = True
-    else:
-        pstats.metadata_cache_enabled = False
+    _fill_cache_stats(pstats, cache_db)
 
     # Tag reference files
-    if args.reference:
-        ref_dirs = list(dict.fromkeys(p for d in args.reference for p in (Path(d), Path(d).resolve())))
+    ref_dirs = _resolve_reference_dirs(args)
+    if ref_dirs:
         all_metadata = [replace(m, is_reference=True) if _is_reference(m.path, ref_dirs) else m for m in all_metadata]
 
-    # Filter
-    min_resolution = None
-    max_resolution = None
-    min_bitrate = None
-    max_bitrate = None
-    codecs = None
-    try:
-        if args.min_resolution:
-            min_resolution = parse_resolution(args.min_resolution)
-        if args.max_resolution:
-            max_resolution = parse_resolution(args.max_resolution)
-        if args.min_bitrate:
-            min_bitrate = parse_bitrate(args.min_bitrate)
-        if args.max_bitrate:
-            max_bitrate = parse_bitrate(args.max_bitrate)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        sys.exit(1)
-    if args.codec:
-        codecs = frozenset(c.strip().lower() for c in args.codec.split(","))
+    min_resolution, max_resolution, min_bitrate, max_bitrate, codecs = _parse_filter_args(args)
 
     if progress_emitter is not None:
         progress_emitter.stage_start("filter")

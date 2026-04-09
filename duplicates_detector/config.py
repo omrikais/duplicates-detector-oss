@@ -91,6 +91,7 @@ DEFAULTS: dict = {
     "no_sidecars": False,
 }
 
+_MODE_VALUES = tuple(Mode)
 _KEEP_CHOICES = {"newest", "oldest", "biggest", "smallest", "longest", "highest-res", "edited"}
 _ACTION_CHOICES = {"delete", "trash", "move-to", "hardlink", "symlink", "reflink"}
 _FORMAT_CHOICES = {"table", "json", "csv", "shell", "html", "markdown"}
@@ -153,11 +154,15 @@ _RESOLUTION_FIELDS = {"min_resolution", "max_resolution"}
 _BITRATE_FIELDS = {"min_bitrate", "max_bitrate"}
 
 
+def _config_base_dir() -> Path:
+    """Return the XDG_CONFIG_HOME base (``~/.config`` fallback)."""
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    return Path(xdg) if xdg else Path.home() / ".config"
+
+
 def get_config_path() -> Path:
     """Return the config file path (XDG_CONFIG_HOME or ~/.config fallback)."""
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "duplicates-detector" / _CONFIG_FILENAME
+    return _config_base_dir() / "duplicates-detector" / _CONFIG_FILENAME
 
 
 def validate_profile_name(name: str) -> None:
@@ -177,9 +182,7 @@ def validate_profile_name(name: str) -> None:
 
 def get_profiles_dir() -> Path:
     """Return the profiles directory (XDG_CONFIG_HOME or ~/.config fallback)."""
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "duplicates-detector" / _PROFILES_DIRNAME
+    return _config_base_dir() / "duplicates-detector" / _PROFILES_DIRNAME
 
 
 def get_profile_path(name: str) -> Path:
@@ -536,7 +539,7 @@ def _validate_field(key: str, value: object) -> bool:
             )
             return False
     elif key == "mode":
-        if not isinstance(value, str) or value not in tuple(Mode):
+        if not isinstance(value, str) or value not in _MODE_VALUES:
             warnings.warn(
                 f"Config: 'mode' must be 'video', 'image', 'audio', 'auto', or 'document', got {value!r}, skipping",
                 stacklevel=2,

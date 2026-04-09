@@ -39,6 +39,18 @@ if TYPE_CHECKING:
 _CANONICAL_STAGES = ("scan", "extract", "filter", "content_hash", "audio_fingerprint", "score")
 
 
+def _get_cache_stats(cache: Any) -> dict[str, int]:
+    """Return cache hit/miss stats, or ``{}`` if *cache* is ``None``."""
+    if cache is not None:
+        return cache.stats()
+    return {}
+
+
+def _effective_workers(config: Any) -> int:
+    """Resolve the worker count from *config*, falling back to CPU count."""
+    return getattr(config, "workers", 0) or (os.cpu_count() or 4)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline result
 # ---------------------------------------------------------------------------
@@ -496,7 +508,7 @@ async def extract_stage(
         progress.stage_start("extract", total=expected_total)
     extract_start = time.monotonic()
 
-    raw_workers = getattr(config, "workers", 0) or (os.cpu_count() or 4)
+    raw_workers = _effective_workers(config)
     # Metadata extraction is I/O-bound (stat + read), not CPU-bound.
     # Scale workers above CPU count to keep the disk busy.
     max_concurrent = min(raw_workers * 8, 128)
@@ -512,11 +524,6 @@ async def extract_stage(
         if expected_total is not None:
             return expected_total
         return items_received
-
-    def _cache_stats() -> dict[str, int]:
-        if cache is not None:
-            return cache.stats()
-        return {}
 
     def _tag_reference(meta: VideoMetadata) -> VideoMetadata:
         """Tag metadata as reference if path is inside any reference dir."""
@@ -602,7 +609,7 @@ async def extract_stage(
 
     def _emit_progress() -> None:
         if progress is not None:
-            stats = _cache_stats()
+            stats = _get_cache_stats(cache)
             progress.progress(
                 "extract",
                 current=count,
@@ -644,7 +651,7 @@ async def extract_stage(
         batch_n, batch_results = _count_and_collect(done)
         count += batch_n
         if progress is not None:
-            stats = _cache_stats()
+            stats = _get_cache_stats(cache)
             progress.progress(
                 "extract",
                 current=count,
@@ -656,7 +663,7 @@ async def extract_stage(
             await out_q.put(meta)
 
     if progress is not None:
-        stats = _cache_stats()
+        stats = _get_cache_stats(cache)
         progress.progress(
             "extract",
             current=count,
@@ -794,13 +801,8 @@ async def hash_stage(
         if progress is not None:
             progress.stage_start("content_hash", total=expected_total)
 
-    def _cache_stats() -> dict[str, int]:
-        if cache is not None:
-            return cache.stats()
-        return {}
-
     if do_hash:
-        workers = getattr(config, "workers", 0) or (os.cpu_count() or 4)
+        workers = _effective_workers(config)
         max_concurrent = min(workers, 128)
         executor = ThreadPoolExecutor(max_workers=max_concurrent)
         items_received = 0
@@ -873,7 +875,7 @@ async def hash_stage(
                     await out_q.put(f.result())
                     count += 1
                 if stage_visible and progress is not None:
-                    stats = _cache_stats()
+                    stats = _get_cache_stats(cache)
                     progress.progress(
                         "content_hash",
                         current=count,
@@ -886,24 +888,8 @@ async def hash_stage(
                 for f in done:
                     await out_q.put(f.result())
                     count += 1
-                    if stage_visible and progress is not None:
-                        stats = _cache_stats()
-                        progress.progress(
-                            "content_hash",
-                            current=count,
-                            total=items_received,
-                            cache_hits=stats.get("content_hits"),
-                            cache_misses=stats.get("content_misses"),
-                        )
-
-        # Drain remaining futures
-        if pending:
-            done, _ = await asyncio.wait(pending)
-            for f in done:
-                await out_q.put(f.result())
-                count += 1
                 if stage_visible and progress is not None:
-                    stats = _cache_stats()
+                    stats = _get_cache_stats(cache)
                     progress.progress(
                         "content_hash",
                         current=count,
@@ -912,13 +898,29 @@ async def hash_stage(
                         cache_misses=stats.get("content_misses"),
                     )
 
+        # Drain remaining futures
+        if pending:
+            done, _ = await asyncio.wait(pending)
+            for f in done:
+                await out_q.put(f.result())
+                count += 1
+            if stage_visible and progress is not None:
+                stats = _get_cache_stats(cache)
+                progress.progress(
+                    "content_hash",
+                    current=count,
+                    total=items_received,
+                    cache_hits=stats.get("content_hits"),
+                    cache_misses=stats.get("content_misses"),
+                )
+
         executor.shutdown(wait=False)
     else:
         # Pass-through: no hashing requested, but compute pre-hashes
         # for byte-identical detection unless explicitly disabled.
         compute_pre_hash = not config.no_pre_hash
         if compute_pre_hash:
-            workers_count = config.workers or (os.cpu_count() or 4)
+            workers_count = _effective_workers(config)
             pre_hash_executor = ThreadPoolExecutor(max_workers=min(workers_count, 128))
         else:
             pre_hash_executor = None
@@ -941,7 +943,7 @@ async def hash_stage(
             pre_hash_executor.shutdown(wait=False)
 
     if stage_visible and progress is not None:
-        stats = _cache_stats()
+        stats = _get_cache_stats(cache)
         progress.progress(
             "content_hash",
             current=count,
@@ -1005,11 +1007,6 @@ async def audio_stage(
         if progress is not None:
             progress.stage_start("audio_fingerprint", total=expected_total)
 
-    def _cache_stats() -> dict[str, int]:
-        if cache is not None:
-            return cache.stats()
-        return {}
-
     def _best_audio_total() -> int | None:
         if expected_total is not None:
             return expected_total
@@ -1018,7 +1015,7 @@ async def audio_stage(
     if do_audio:
         from duplicates_detector.audio import _fingerprint_one_with_cache
 
-        workers = getattr(config, "workers", 0) or (os.cpu_count() or 4)
+        workers = _effective_workers(config)
         max_concurrent = min(workers, 128)
         loop = asyncio.get_running_loop()
         executor = ThreadPoolExecutor(max_workers=max_concurrent)
@@ -1040,7 +1037,7 @@ async def audio_stage(
                     await out_q.put(f.result())
                     count += 1
                 if stage_visible and progress is not None:
-                    stats = _cache_stats()
+                    stats = _get_cache_stats(cache)
                     progress.progress(
                         "audio_fingerprint",
                         current=count,
@@ -1053,24 +1050,8 @@ async def audio_stage(
                 for f in done:
                     await out_q.put(f.result())
                     count += 1
-                    if stage_visible and progress is not None:
-                        stats = _cache_stats()
-                        progress.progress(
-                            "audio_fingerprint",
-                            current=count,
-                            total=_best_audio_total(),
-                            cache_hits=stats.get("audio_hits"),
-                            cache_misses=stats.get("audio_misses"),
-                        )
-
-        # After sentinel: items_received is the definitive total.
-        if pending:
-            done, _ = await asyncio.wait(pending)
-            for f in done:
-                await out_q.put(f.result())
-                count += 1
                 if stage_visible and progress is not None:
-                    stats = _cache_stats()
+                    stats = _get_cache_stats(cache)
                     progress.progress(
                         "audio_fingerprint",
                         current=count,
@@ -1078,6 +1059,22 @@ async def audio_stage(
                         cache_hits=stats.get("audio_hits"),
                         cache_misses=stats.get("audio_misses"),
                     )
+
+        # After sentinel: items_received is the definitive total.
+        if pending:
+            done, _ = await asyncio.wait(pending)
+            for f in done:
+                await out_q.put(f.result())
+                count += 1
+            if stage_visible and progress is not None:
+                stats = _get_cache_stats(cache)
+                progress.progress(
+                    "audio_fingerprint",
+                    current=count,
+                    total=_best_audio_total(),
+                    cache_hits=stats.get("audio_hits"),
+                    cache_misses=stats.get("audio_misses"),
+                )
 
         executor.shutdown(wait=False)
     else:
@@ -1092,7 +1089,7 @@ async def audio_stage(
                 progress.progress("audio_fingerprint", current=count)
 
     if stage_visible and progress is not None:
-        stats = _cache_stats()
+        stats = _get_cache_stats(cache)
         progress.progress(
             "audio_fingerprint",
             current=count,
@@ -1158,11 +1155,6 @@ async def score_stage(
             break
         metadata_list.append(meta)
 
-    def _cache_stats() -> dict[str, int]:
-        if cache is not None:
-            return cache.stats()
-        return {}
-
     if len(metadata_list) < 2:
         if progress is not None:
             progress.stage_end("score", total=0, elapsed=time.monotonic() - score_start, cache_hits=0, cache_misses=0)
@@ -1204,7 +1196,7 @@ async def score_stage(
     elapsed = time.monotonic() - score_start
     total_evaluated = scoring_stats.get("total_pairs_scored", len(scored))
     if progress is not None:
-        _cstats = _cache_stats()
+        _cstats = _get_cache_stats(cache)
         progress.stage_end(
             "score",
             total=total_evaluated,

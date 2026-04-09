@@ -182,6 +182,9 @@ def _scan_files_iter(
     if exclude and sys.version_info < (3, 13):
         _compiled_excludes = [_glob_to_regex(pat) for pat in exclude]
 
+    # Resolve the exclude-matching strategy once, outside the hot loop.
+    _use_full_match = exclude and sys.version_info >= (3, 13)
+
     for root in roots:
         raw_entries = root.rglob("*") if recursive else root.iterdir()
 
@@ -192,10 +195,7 @@ def _scan_files_iter(
                 if not entry.is_file():
                     continue
                 if exclude:
-                    # full_match (3.13+) handles ** correctly; older
-                    # versions lack it or have bugs, so we use a
-                    # glob→regex polyfill instead.
-                    if sys.version_info >= (3, 13):
+                    if _use_full_match:
                         _match = entry.relative_to(root).full_match
                         excluded = any(_match(pat) for pat in exclude)
                     else:
