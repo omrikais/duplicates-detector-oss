@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
 
@@ -53,7 +53,7 @@ class ActionLog:
         if self._file is None:
             return
         record: dict = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": action,
             "path": str(path.resolve()),
             "score": score,

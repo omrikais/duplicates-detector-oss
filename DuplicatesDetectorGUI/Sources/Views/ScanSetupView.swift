@@ -536,7 +536,7 @@ private struct ResumeSessionCard: View {
                 if let info = sessionInfo {
                     HStack(spacing: DDSpacing.sm) {
                         // Directory names
-                        let dirNames = info.directories.map { ($0 as NSString).lastPathComponent }
+                        let dirNames = info.directories.map { $0.fileName }
                         Text(dirNames.joined(separator: ", "))
                             .font(DDTypography.metadata)
                             .foregroundStyle(ddColors.textSecondary)
@@ -584,7 +584,7 @@ private struct ResumeSessionCard: View {
         guard let info = sessionInfo else {
             return "Previous scan paused. Session \(sessionId)"
         }
-        let dirNames = info.directories.map { ($0 as NSString).lastPathComponent }
+        let dirNames = info.directories.map { $0.fileName }
         var text = "Previous \(info.mode) scan paused. Directories: \(dirNames.joined(separator: ", "))"
         if info.progressPercent > 0 {
             text += ". \(info.progressPercent)% complete"

@@ -72,10 +72,10 @@ struct InsightsTab: View {
                     ? Int(round(Double(abs(delta)) / Double(previous.pairCount) * 100))
                     : nil
 
-                HStack(spacing: DDSpacing.sm) {
-                    Image(systemName: trendIcon(delta: delta))
-                        .font(DDIcon.largeFont)
-                        .foregroundStyle(trendColor(delta: delta))
+                trendRow(
+                    icon: trendIcon(delta: delta),
+                    iconColor: trendColor(delta: delta)
+                ) {
                     VStack(alignment: .leading, spacing: DDSpacing.xxs) {
                         Text(trendHeadline(delta: delta, percent: percentChange))
                             .font(DDTypography.sectionTitle)
@@ -84,38 +84,39 @@ struct InsightsTab: View {
                             .font(DDTypography.metadata)
                             .foregroundStyle(ddColors.textSecondary)
                     }
-                    Spacer()
                 }
-                .accessibilityElement(children: .combine)
                 .accessibilityLabel(trendAccessibilityLabel(delta: delta, percent: percentChange, previous: previous))
             } else if scans.count == 1 {
-                HStack(spacing: DDSpacing.sm) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(DDIcon.largeFont)
-                        .foregroundStyle(DDColors.info)
+                trendRow(icon: "chart.line.uptrend.xyaxis", iconColor: DDColors.info) {
                     Text("First scan \u{2014} trends will appear after future scans of these directories")
                         .font(DDTypography.body)
                         .foregroundStyle(ddColors.textSecondary)
-                    Spacer()
                 }
-                .accessibilityElement(children: .combine)
                 .accessibilityLabel("First scan, trends will appear after future scans")
             } else {
-                HStack(spacing: DDSpacing.sm) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(DDIcon.largeFont)
-                        .foregroundStyle(ddColors.textMuted)
+                trendRow(icon: "chart.line.uptrend.xyaxis", iconColor: ddColors.textMuted) {
                     Text("Not enough scan history for trend analysis")
                         .font(DDTypography.body)
                         .foregroundStyle(ddColors.textSecondary)
-                    Spacer()
                 }
-                .accessibilityElement(children: .combine)
                 .accessibilityLabel("Not enough scan history for trend analysis")
             }
         }
         .padding(DDSpacing.md)
         .ddGlassCard()
+    }
+
+    private func trendRow<Content: View>(
+        icon: String, iconColor: Color, @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: DDSpacing.sm) {
+            Image(systemName: icon)
+                .font(DDIcon.largeFont)
+                .foregroundStyle(iconColor)
+            content()
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Score Distribution Chart

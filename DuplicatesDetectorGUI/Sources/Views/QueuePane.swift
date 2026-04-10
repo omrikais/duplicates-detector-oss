@@ -83,26 +83,26 @@ struct QueuePane: View {
         .listStyle(.inset(alternatesRowBackgrounds: true))
         .overlay {
             if store.filteredPairs.isEmpty {
-                pairEmptyState
+                emptyState(entity: "pairs", emptyIcon: "checkmark.circle", emptyLabel: "No Duplicates Found")
             }
         }
     }
 
     @ViewBuilder
-    private var pairEmptyState: some View {
+    private func emptyState(entity: String, emptyIcon: String, emptyLabel: String) -> some View {
         if store.session.display.directoryFilter != nil {
             ContentUnavailableView {
                 Label("No Matches in Directory", systemImage: "folder.badge.questionmark")
             } description: {
-                Text("No pairs match the active directory filter.")
+                Text("No \(entity) match the active directory filter.")
             } actions: {
                 Button("Clear Filter") { store.send(.setDirectoryFilter(nil)) }
             }
         } else if store.session.display.searchText.isEmpty {
             ContentUnavailableView {
-                Label("No Duplicates Found", systemImage: "checkmark.circle")
+                Label(emptyLabel, systemImage: emptyIcon)
             } description: {
-                Text("No duplicate pairs were detected in the scanned files.")
+                Text("No duplicate \(entity) were \(entity == "pairs" ? "detected in the scanned files" : "found").")
             } actions: {
                 Button("New Scan") { store.send(.resetToSetup) }
             }
@@ -110,34 +110,7 @@ struct QueuePane: View {
             ContentUnavailableView {
                 Label("No Matches", systemImage: "magnifyingglass")
             } description: {
-                Text("No pairs match '\(store.session.display.searchText)'.")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var groupEmptyState: some View {
-        if store.session.display.directoryFilter != nil {
-            ContentUnavailableView {
-                Label("No Matches in Directory", systemImage: "folder.badge.questionmark")
-            } description: {
-                Text("No groups match the active directory filter.")
-            } actions: {
-                Button("Clear Filter") { store.send(.setDirectoryFilter(nil)) }
-            }
-        } else if store.session.display.searchText.isEmpty {
-            ContentUnavailableView {
-                Label("No Groups", systemImage: "rectangle.3.group")
-            } description: {
-                Text("No duplicate groups were found.")
-            } actions: {
-                Button("New Scan") { store.send(.resetToSetup) }
-            }
-        } else {
-            ContentUnavailableView {
-                Label("No Matches", systemImage: "magnifyingglass")
-            } description: {
-                Text("No groups match '\(store.session.display.searchText)'.")
+                Text("No \(entity) match '\(store.session.display.searchText)'.")
             }
         }
     }
@@ -174,7 +147,7 @@ struct QueuePane: View {
         .listStyle(.inset(alternatesRowBackgrounds: true))
         .overlay {
             if store.filteredGroups.isEmpty {
-                groupEmptyState
+                emptyState(entity: "groups", emptyIcon: "rectangle.3.group", emptyLabel: "No Groups")
             }
         }
     }

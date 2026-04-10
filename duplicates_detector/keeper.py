@@ -104,7 +104,7 @@ def _sidecar_count(
     """
     if no_sidecars:
         return 0
-    sc = getattr(meta, "sidecars", None)
+    sc = meta.sidecars
     if sc is not None:
         return len(sc)
     try:
@@ -257,7 +257,7 @@ def _pick_best(
 ) -> VideoMetadata | None:
     """Generic N-member comparison with None handling and file-size tie-break."""
     # Filter out members where the key value is None
-    candidates = [(m, key(m)) for m in members if key(m) is not None]
+    candidates = [(m, v) for m in members if (v := key(m)) is not None]
     if not candidates:
         return None
     if len(candidates) == 1:
@@ -277,11 +277,12 @@ def _pick_best(
 
     # Tied on primary — use file_size then sidecar count to break tie
     tied = [m for m, v in candidates if v == best_val]
-    tied.sort(key=lambda m: (m.file_size, _sidecar_count(m, sc_ext, no_sc)), reverse=True)
+    sc_cache = {id(m): _sidecar_count(m, sc_ext, no_sc) for m in tied}
+    tied.sort(key=lambda m: (m.file_size, sc_cache[id(m)]), reverse=True)
     if tied[0].file_size > tied[1].file_size:
         return tied[0]
     # File sizes also tied — try sidecar count
-    if _sidecar_count(tied[0], sc_ext, no_sc) > _sidecar_count(tied[1], sc_ext, no_sc):
+    if sc_cache[id(tied[0])] > sc_cache[id(tied[1])]:
         return tied[0]
     return None
 

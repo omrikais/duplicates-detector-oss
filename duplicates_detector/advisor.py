@@ -61,6 +61,53 @@ class _DeletionOutcome:
     sidecar_bytes_freed: int = 0
 
 
+class _DeletionAccumulator:
+    """Mutable accumulator for deletion state across an interactive or auto session."""
+
+    __slots__ = (
+        "deleted_paths",
+        "deleted_list",
+        "errors",
+        "skipped",
+        "bytes_freed",
+        "sidecars_deleted",
+        "sidecar_bytes_freed",
+    )
+
+    def __init__(self) -> None:
+        self.deleted_paths: set[Path] = set()
+        self.deleted_list: list[Path] = []
+        self.errors: list[tuple[Path, str]] = []
+        self.skipped: int = 0
+        self.bytes_freed: int = 0
+        self.sidecars_deleted: int = 0
+        self.sidecar_bytes_freed: int = 0
+
+    def apply_outcome(self, target_path: Path, outcome: _DeletionOutcome) -> None:
+        """Update accumulators from a single deletion outcome."""
+        if outcome.success:
+            self.deleted_paths.add(target_path)
+            self.deleted_list.append(target_path)
+            self.bytes_freed += outcome.bytes_freed
+            self.sidecars_deleted += outcome.sidecars_deleted
+            self.sidecar_bytes_freed += outcome.sidecar_bytes_freed
+        elif outcome.already_gone:
+            self.deleted_paths.add(target_path)
+            self.skipped += 1
+        elif outcome.error:
+            self.errors.append((target_path, outcome.error))
+
+    def to_summary(self) -> DeletionSummary:
+        return DeletionSummary(
+            deleted=self.deleted_list,
+            skipped=self.skipped,
+            errors=self.errors,
+            bytes_freed=self.bytes_freed,
+            sidecars_deleted=self.sidecars_deleted,
+            sidecar_bytes_freed=self.sidecar_bytes_freed,
+        )
+
+
 def _execute_deletion(
     target_path: Path,
     kept_path: Path,
@@ -189,7 +236,6 @@ def _remove_sidecar(sc_path: Path, deleter: Deleter, console: Console) -> tuple[
     """
     import shutil
 
-    # Link-based deleters: skip all sidecars (can't meaningfully link metadata)
     if isinstance(deleter, (HardlinkDeleter, SymlinkDeleter, ReflinkDeleter)):
         kind = "directory" if sc_path.is_dir() else "file"
         console.print(f"    [yellow]Skipping sidecar {kind} (unsupported for {deleter.verb}):[/yellow] {sc_path}")
@@ -350,14 +396,7 @@ def review_duplicates(
         console = Console()
 
     effective_deleter = deleter or PermanentDeleter()
-
-    deleted_paths: set[Path] = set()
-    deleted_list: list[Path] = []
-    errors: list[tuple[Path, str]] = []
-    skipped = 0
-    bytes_freed = 0
-    sidecars_deleted = 0
-    sidecar_bytes_freed = 0
+    acc = _DeletionAccumulator()
 
     if not pairs:
         console.print("[green]No pairs to review.[/green]")
@@ -376,12 +415,12 @@ def review_duplicates(
 
     for idx, pair in enumerate(pairs, 1):
         # Auto-skip if either file was already deleted
-        a_gone = pair.file_a.path in deleted_paths
-        b_gone = pair.file_b.path in deleted_paths
+        a_gone = pair.file_a.path in acc.deleted_paths
+        b_gone = pair.file_b.path in acc.deleted_paths
         if a_gone or b_gone:
             gone = pair.file_a.path if a_gone else pair.file_b.path
             console.print(f"  [dim]Pair {idx}/{len(pairs)}: skipped ({gone.name} already deleted)[/dim]")
-            skipped += 1
+            acc.skipped += 1
             continue
 
         # Skip pairs where both files are reference
@@ -389,7 +428,7 @@ def review_duplicates(
         b_is_ref = pair.file_b.is_reference
         if a_is_ref and b_is_ref:
             console.print(f"  [dim]Pair {idx}/{len(pairs)}: skipped (both files are reference)[/dim]")
-            skipped += 1
+            acc.skipped += 1
             continue
 
         console.print(_render_pair(pair, idx, len(pairs), verbose=verbose))
@@ -429,18 +468,18 @@ def review_duplicates(
         )
 
         if choice == "q":
-            skipped += len(pairs) - idx
+            acc.skipped += len(pairs) - idx
             console.print("[dim]Quitting interactive review.[/dim]")
             break
 
         if choice == "s":
-            skipped += 1
+            acc.skipped += 1
             continue
 
         if choice == "s!":
             if ignore_list is not None:
                 ignore_list.add(pair.file_a.path, pair.file_b.path)
-            skipped += 1
+            acc.skipped += 1
             continue
 
         target = pair.file_a if choice == "a" else pair.file_b
@@ -459,17 +498,7 @@ def review_duplicates(
             sidecar_extensions=sidecar_extensions,
             no_sidecars=no_sidecars,
         )
-        if outcome.success:
-            deleted_paths.add(target.path)
-            deleted_list.append(target.path)
-            bytes_freed += outcome.bytes_freed
-            sidecars_deleted += outcome.sidecars_deleted
-            sidecar_bytes_freed += outcome.sidecar_bytes_freed
-        elif outcome.already_gone:
-            deleted_paths.add(target.path)
-            skipped += 1
-        elif outcome.error:
-            errors.append((target.path, outcome.error))
+        acc.apply_outcome(target.path, outcome)
 
         console.print()
 
@@ -477,14 +506,7 @@ def review_duplicates(
         ignore_list.save()
 
     console.print()
-    summary = DeletionSummary(
-        deleted=deleted_list,
-        skipped=skipped,
-        errors=errors,
-        bytes_freed=bytes_freed,
-        sidecars_deleted=sidecars_deleted,
-        sidecar_bytes_freed=sidecar_bytes_freed,
-    )
+    summary = acc.to_summary()
     _print_summary(summary, console, dry_run=dry_run, deleter=effective_deleter)
     return summary
 
@@ -509,14 +531,7 @@ def auto_delete(
         console = Console()
 
     effective_deleter = deleter or PermanentDeleter()
-
-    deleted_paths: set[Path] = set()
-    deleted_list: list[Path] = []
-    errors: list[tuple[Path, str]] = []
-    skipped = 0
-    bytes_freed = 0
-    sidecars_deleted = 0
-    sidecar_bytes_freed = 0
+    acc = _DeletionAccumulator()
 
     if not pairs:
         console.print("[green]No pairs to process.[/green]")
@@ -531,18 +546,18 @@ def auto_delete(
 
     for pair in pairs:
         # Auto-skip if either file was already deleted
-        if pair.file_a.path in deleted_paths or pair.file_b.path in deleted_paths:
-            skipped += 1
+        if pair.file_a.path in acc.deleted_paths or pair.file_b.path in acc.deleted_paths:
+            acc.skipped += 1
             continue
 
         # Skip both-reference pairs
         if pair.file_a.is_reference and pair.file_b.is_reference:
-            skipped += 1
+            acc.skipped += 1
             continue
 
         delete_choice = pick_delete(pair, strategy, sidecar_extensions=sidecar_extensions, no_sidecars=no_sidecars)
         if delete_choice is None:
-            skipped += 1
+            acc.skipped += 1
             continue
 
         target = pair.file_a if delete_choice == "a" else pair.file_b
@@ -550,7 +565,7 @@ def auto_delete(
 
         # Skip if target is a reference file
         if target.is_reference:
-            skipped += 1
+            acc.skipped += 1
             continue
 
         outcome = _execute_deletion(
@@ -566,27 +581,10 @@ def auto_delete(
             sidecar_extensions=sidecar_extensions,
             no_sidecars=no_sidecars,
         )
-        if outcome.success:
-            deleted_paths.add(target.path)
-            deleted_list.append(target.path)
-            bytes_freed += outcome.bytes_freed
-            sidecars_deleted += outcome.sidecars_deleted
-            sidecar_bytes_freed += outcome.sidecar_bytes_freed
-        elif outcome.already_gone:
-            deleted_paths.add(target.path)
-            skipped += 1
-        elif outcome.error:
-            errors.append((target.path, outcome.error))
+        acc.apply_outcome(target.path, outcome)
 
     console.print()
-    summary = DeletionSummary(
-        deleted=deleted_list,
-        skipped=skipped,
-        errors=errors,
-        bytes_freed=bytes_freed,
-        sidecars_deleted=sidecars_deleted,
-        sidecar_bytes_freed=sidecar_bytes_freed,
-    )
+    summary = acc.to_summary()
     _print_summary(summary, console, dry_run=dry_run, deleter=effective_deleter)
     return summary
 
@@ -649,14 +647,7 @@ def review_groups(
         console = Console()
 
     effective_deleter = deleter or PermanentDeleter()
-
-    deleted_paths: set[Path] = set()
-    deleted_list: list[Path] = []
-    errors: list[tuple[Path, str]] = []
-    skipped = 0
-    bytes_freed = 0
-    sidecars_deleted = 0
-    sidecar_bytes_freed = 0
+    acc = _DeletionAccumulator()
 
     if not groups:
         console.print("[green]No groups to review.[/green]")
@@ -675,12 +666,12 @@ def review_groups(
 
     for idx, group in enumerate(groups, 1):
         # Filter to alive members
-        alive = [m for m in group.members if m.path not in deleted_paths]
+        alive = [m for m in group.members if m.path not in acc.deleted_paths]
         deletable = [m for m in alive if not m.is_reference]
 
         if len(alive) < 2 or len(deletable) < 1:
             console.print(f"  [dim]Group {idx}/{len(groups)}: skipped (nothing to delete)[/dim]")
-            skipped += 1
+            acc.skipped += 1
             continue
 
         console.print(_render_group(group, alive, idx, len(groups)))
@@ -717,12 +708,12 @@ def review_groups(
         )
 
         if choice == "q":
-            skipped += len(groups) - idx
+            acc.skipped += len(groups) - idx
             console.print("[dim]Quitting interactive review.[/dim]")
             break
 
         if choice == "s":
-            skipped += 1
+            acc.skipped += 1
             continue
 
         if choice == "s!":
@@ -730,7 +721,7 @@ def review_groups(
                 for i in range(len(alive)):
                     for j in range(i + 1, len(alive)):
                         ignore_list.add(alive[i].path, alive[j].path)
-            skipped += 1
+            acc.skipped += 1
             continue
 
         # Delete all non-keeper, non-reference alive members
@@ -755,16 +746,7 @@ def review_groups(
                 sidecar_extensions=sidecar_extensions,
                 no_sidecars=no_sidecars,
             )
-            if outcome.success:
-                deleted_paths.add(member.path)
-                deleted_list.append(member.path)
-                bytes_freed += outcome.bytes_freed
-                sidecars_deleted += outcome.sidecars_deleted
-                sidecar_bytes_freed += outcome.sidecar_bytes_freed
-            elif outcome.already_gone:
-                deleted_paths.add(member.path)
-            elif outcome.error:
-                errors.append((member.path, outcome.error))
+            acc.apply_outcome(member.path, outcome)
 
         console.print()
 
@@ -772,14 +754,7 @@ def review_groups(
         ignore_list.save()
 
     console.print()
-    summary = DeletionSummary(
-        deleted=deleted_list,
-        skipped=skipped,
-        errors=errors,
-        bytes_freed=bytes_freed,
-        sidecars_deleted=sidecars_deleted,
-        sidecar_bytes_freed=sidecar_bytes_freed,
-    )
+    summary = acc.to_summary()
     _print_summary(summary, console, dry_run=dry_run, unit="group", deleter=effective_deleter)
     return summary
 
@@ -804,14 +779,7 @@ def auto_delete_groups(
         console = Console()
 
     effective_deleter = deleter or PermanentDeleter()
-
-    deleted_paths: set[Path] = set()
-    deleted_list: list[Path] = []
-    errors: list[tuple[Path, str]] = []
-    skipped = 0
-    bytes_freed = 0
-    sidecars_deleted = 0
-    sidecar_bytes_freed = 0
+    acc = _DeletionAccumulator()
 
     if not groups:
         console.print("[green]No groups to process.[/green]")
@@ -826,15 +794,15 @@ def auto_delete_groups(
 
     for group in groups:
         # Filter to alive members
-        alive = [m for m in group.members if m.path not in deleted_paths]
+        alive = [m for m in group.members if m.path not in acc.deleted_paths]
         if len(alive) < 2:
-            skipped += 1
+            acc.skipped += 1
             continue
 
         # All reference → skip
         deletable = [m for m in alive if not m.is_reference]
         if not deletable:
-            skipped += 1
+            acc.skipped += 1
             continue
 
         keeper = pick_keep_from_group(
@@ -844,7 +812,7 @@ def auto_delete_groups(
             no_sidecars=no_sidecars,
         )
         if keeper is None:
-            skipped += 1
+            acc.skipped += 1
             continue
 
         for member in alive:
@@ -865,25 +833,9 @@ def auto_delete_groups(
                 sidecar_extensions=sidecar_extensions,
                 no_sidecars=no_sidecars,
             )
-            if outcome.success:
-                deleted_paths.add(member.path)
-                deleted_list.append(member.path)
-                bytes_freed += outcome.bytes_freed
-                sidecars_deleted += outcome.sidecars_deleted
-                sidecar_bytes_freed += outcome.sidecar_bytes_freed
-            elif outcome.already_gone:
-                deleted_paths.add(member.path)
-            elif outcome.error:
-                errors.append((member.path, outcome.error))
+            acc.apply_outcome(member.path, outcome)
 
     console.print()
-    summary = DeletionSummary(
-        deleted=deleted_list,
-        skipped=skipped,
-        errors=errors,
-        bytes_freed=bytes_freed,
-        sidecars_deleted=sidecars_deleted,
-        sidecar_bytes_freed=sidecar_bytes_freed,
-    )
+    summary = acc.to_summary()
     _print_summary(summary, console, dry_run=dry_run, unit="group", deleter=effective_deleter)
     return summary

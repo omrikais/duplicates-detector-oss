@@ -817,6 +817,41 @@ def _html_group_sections(
 # Public API
 # ---------------------------------------------------------------------------
 
+_MODE_TITLES: dict[str, str] = {
+    "video": "Potential Duplicate Videos",
+    "image": "Potential Duplicate Images",
+    "audio": "Potential Duplicate Audio Files",
+    "auto": "Potential Duplicate Media",
+}
+
+
+def _assemble_html_report(
+    content_html: str,
+    *,
+    file: TextIO | None = None,
+    title: str,
+    stats: PipelineStats | None = None,
+    pair_count: int,
+    group_count: int | None = None,
+    mode: str = Mode.VIDEO,
+    dry_run_summary: DeletionSummary | None = None,
+    analytics: AnalyticsResult | None = None,
+) -> None:
+    """Assemble and write a complete HTML report from pre-rendered content."""
+    sections: list[str] = [_html_head(title)]
+    sections.append(_html_summary_dashboard(stats, pair_count=pair_count, group_count=group_count, mode=mode))
+    if analytics is not None:
+        sections.append(_html_analytics_dashboard(analytics))
+    if content_html:
+        sections.append(content_html)
+    else:
+        sections.append('<div class="no-results">No duplicates found above threshold.</div>\n')
+    if dry_run_summary is not None and dry_run_summary.deleted:
+        sections.append(_html_dry_run_summary(dry_run_summary))
+    sections.append(_html_foot())
+    dest = file if file is not None else sys.stdout
+    dest.write("".join(sections))
+
 
 def write_html(
     pairs: list[ScoredPair],
@@ -834,45 +869,32 @@ def write_html(
     analytics: AnalyticsResult | None = None,
 ) -> None:
     """Write a self-contained HTML report for pair-mode results."""
-    title = {
-        "video": "Potential Duplicate Videos",
-        "image": "Potential Duplicate Images",
-        "audio": "Potential Duplicate Audio Files",
-        "auto": "Potential Duplicate Media",
-    }.get(mode, "Potential Duplicates")
-
+    title = _MODE_TITLES.get(mode, "Potential Duplicates")
     all_meta = _collect_pair_metadata(pairs)
     thumbnails = _generate_all_thumbnails(all_meta, mode=mode, quiet=quiet, controller=pause_controller)
-
-    sections: list[str] = [_html_head(title)]
-    sections.append(_html_summary_dashboard(stats, pair_count=len(pairs), mode=mode))
-
-    if analytics is not None:
-        sections.append(_html_analytics_dashboard(analytics))
-
-    if not pairs:
-        sections.append('<div class="no-results">No duplicates found above threshold.</div>\n')
-    else:
-        sections.append(
-            _html_pair_table(
-                pairs,
-                thumbnails,
-                keep_strategy=keep_strategy,
-                verbose=verbose,
-                mode=mode,
-                sidecar_extensions=sidecar_extensions,
-                no_sidecars=no_sidecars,
-            )
+    content = (
+        _html_pair_table(
+            pairs,
+            thumbnails,
+            keep_strategy=keep_strategy,
+            verbose=verbose,
+            mode=mode,
+            sidecar_extensions=sidecar_extensions,
+            no_sidecars=no_sidecars,
         )
-
-    if dry_run_summary is not None and dry_run_summary.deleted:
-        sections.append(_html_dry_run_summary(dry_run_summary))
-
-    sections.append(_html_foot())
-
-    output = "".join(sections)
-    dest = file if file is not None else sys.stdout
-    dest.write(output)
+        if pairs
+        else ""
+    )
+    _assemble_html_report(
+        content,
+        file=file,
+        title=title,
+        stats=stats,
+        pair_count=len(pairs),
+        mode=mode,
+        dry_run_summary=dry_run_summary,
+        analytics=analytics,
+    )
 
 
 def write_group_html(
@@ -891,44 +913,30 @@ def write_group_html(
     analytics: AnalyticsResult | None = None,
 ) -> None:
     """Write a self-contained HTML report for group-mode results."""
-    title = {
-        "video": "Potential Duplicate Videos",
-        "image": "Potential Duplicate Images",
-        "audio": "Potential Duplicate Audio Files",
-        "auto": "Potential Duplicate Media",
-    }.get(mode, "Potential Duplicates")
-
+    title = _MODE_TITLES.get(mode, "Potential Duplicates")
     all_meta = _collect_group_metadata(groups)
     thumbnails = _generate_all_thumbnails(all_meta, mode=mode, quiet=quiet, controller=pause_controller)
-
-    sections: list[str] = [_html_head(title)]
-    sections.append(
-        _html_summary_dashboard(stats, pair_count=sum(len(g.pairs) for g in groups), group_count=len(groups), mode=mode)
-    )
-
-    if analytics is not None:
-        sections.append(_html_analytics_dashboard(analytics))
-
-    if not groups:
-        sections.append('<div class="no-results">No duplicates found above threshold.</div>\n')
-    else:
-        sections.append(
-            _html_group_sections(
-                groups,
-                thumbnails,
-                keep_strategy=keep_strategy,
-                verbose=verbose,
-                mode=mode,
-                sidecar_extensions=sidecar_extensions,
-                no_sidecars=no_sidecars,
-            )
+    content = (
+        _html_group_sections(
+            groups,
+            thumbnails,
+            keep_strategy=keep_strategy,
+            verbose=verbose,
+            mode=mode,
+            sidecar_extensions=sidecar_extensions,
+            no_sidecars=no_sidecars,
         )
-
-    if dry_run_summary is not None and dry_run_summary.deleted:
-        sections.append(_html_dry_run_summary(dry_run_summary))
-
-    sections.append(_html_foot())
-
-    output = "".join(sections)
-    dest = file if file is not None else sys.stdout
-    dest.write(output)
+        if groups
+        else ""
+    )
+    _assemble_html_report(
+        content,
+        file=file,
+        title=title,
+        stats=stats,
+        pair_count=sum(len(g.pairs) for g in groups),
+        group_count=len(groups),
+        mode=mode,
+        dry_run_summary=dry_run_summary,
+        analytics=analytics,
+    )

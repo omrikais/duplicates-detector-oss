@@ -173,45 +173,19 @@ def generate_undo_script(
             w("    warnings=$((warnings + 1))\n")
             w("fi\n")
 
-        elif action == "hardlinked":
+        elif action in ("hardlinked", "symlinked", "reflinked"):
             if not kept:
-                w("# WARNING: No kept file recorded — cannot undo this hardlink\n")
-                w(f'echo "WARNING: Cannot undo hardlink for {qpath} — no kept file recorded"\n')
+                w(f"# WARNING: No kept file recorded — cannot undo this {caction}\n")
+                w(f'echo "WARNING: Cannot undo {_shell_quote(action)} for {qpath} — no kept file recorded"\n')
                 w("warnings=$((warnings + 1))\n")
                 continue
-            w(f'if [ -f "{qpath}" ] && [ -f "{qkept}" ]; then\n')
+            test_flag = "-L" if action == "symlinked" else "-f"
+            else_detail = " or not a symlink" if action == "symlinked" else ""
+            w(f'if [ {test_flag} "{qpath}" ] && [ -f "{qkept}" ]; then\n')
             w(f'    cp "{qkept}" "{qpath}.tmp" && mv "{qpath}.tmp" "{qpath}" \\\n')
             w("        && restored=$((restored + 1)) || failed=$((failed + 1))\n")
             w("else\n")
-            w('    echo "WARNING: Cannot undo hardlink — file(s) missing"\n')
-            w("    warnings=$((warnings + 1))\n")
-            w("fi\n")
-
-        elif action == "symlinked":
-            if not kept:
-                w("# WARNING: No kept file recorded — cannot undo this symlink\n")
-                w(f'echo "WARNING: Cannot undo symlink for {qpath} — no kept file recorded"\n')
-                w("warnings=$((warnings + 1))\n")
-                continue
-            w(f'if [ -L "{qpath}" ] && [ -f "{qkept}" ]; then\n')
-            w(f'    cp "{qkept}" "{qpath}.tmp" && mv "{qpath}.tmp" "{qpath}" \\\n')
-            w("        && restored=$((restored + 1)) || failed=$((failed + 1))\n")
-            w("else\n")
-            w('    echo "WARNING: Cannot undo symlink — file(s) missing or not a symlink"\n')
-            w("    warnings=$((warnings + 1))\n")
-            w("fi\n")
-
-        elif action == "reflinked":
-            if not kept:
-                w("# WARNING: No kept file recorded — cannot undo this reflink\n")
-                w(f'echo "WARNING: Cannot undo reflink for {qpath} — no kept file recorded"\n')
-                w("warnings=$((warnings + 1))\n")
-                continue
-            w(f'if [ -f "{qpath}" ] && [ -f "{qkept}" ]; then\n')
-            w(f'    cp "{qkept}" "{qpath}.tmp" && mv "{qpath}.tmp" "{qpath}" \\\n')
-            w("        && restored=$((restored + 1)) || failed=$((failed + 1))\n")
-            w("else\n")
-            w('    echo "WARNING: Cannot undo reflink — file(s) missing"\n')
+            w(f'    echo "WARNING: Cannot undo {_shell_quote(action)} — file(s) missing{else_detail}"\n')
             w("    warnings=$((warnings + 1))\n")
             w("fi\n")
 

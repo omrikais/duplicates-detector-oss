@@ -64,14 +64,8 @@ struct ProgressScreen: View {
         context: SessionStore.ProgressContext
     ) -> some View {
         let stages = scan?.stages ?? []
-        let isPaused: Bool = {
-            if case .paused = scan?.pause { return true }
-            return false
-        }()
-        let isPausing: Bool = {
-            if case .pausing = scan?.pause { return true }
-            return false
-        }()
+        let isPaused = scan?.pause.isPaused ?? false
+        let isPausing = scan?.pause.isPausing ?? false
 
         ScrollView {
             VStack(spacing: DDSpacing.lg) {
@@ -166,14 +160,8 @@ struct ProgressScreen: View {
         let isComplete = scan?.isComplete ?? false
         let isCancelling = scan?.isCancelling ?? false
         let isPhotosLibrary = store.session.metadata.sourceLabel == SessionMetadata.photosLibraryLabel
-        let isPaused: Bool = {
-            if case .paused = scan?.pause { return true }
-            return false
-        }()
-        let isPausing: Bool = {
-            if case .pausing = scan?.pause { return true }
-            return false
-        }()
+        let isPaused = scan?.pause.isPaused ?? false
+        let isPausing = scan?.pause.isPausing ?? false
 
         return HStack(spacing: DDSpacing.sm) {
             if !isComplete {
@@ -493,49 +481,51 @@ private struct PipelineNode: View {
 
     @ViewBuilder
     private var stageDetail: some View {
-        Group {
-            switch stage.status {
-            case .completed(let elapsed, let total, _):
-                VStack(spacing: DDSpacing.hairline) {
-                    Text("\(total)")
-                        .font(DDTypography.metadata)
-                        .foregroundStyle(ddColors.textSecondary)
-                        .contentTransition(.numericText())
-                    Text(ScanProgress.formatElapsed(elapsed))
-                        .font(DDTypography.metadata)
-                        .foregroundStyle(ddColors.textMuted)
-                }
-            case .active(let current, let total):
-                if let total, total > 0 {
-                    VStack(spacing: DDSpacing.hairline) {
-                        Text("\(current)/\(total)")
-                            .font(DDTypography.metadata)
-                            .foregroundStyle(ddColors.textSecondary)
-                            .contentTransition(.numericText())
-                        // Mini progress bar under the active node
-                        ProgressView(value: Double(current), total: Double(total))
-                            .tint(DDColors.accent)
-                            .frame(width: DDSpacing.pipelineLabelMinWidth)
-                            .scaleEffect(y: 0.5)
-                    }
-                } else if let total, total == 0 {
-                    EmptyView()
-                } else if current > 0 {
-                    Text("\(current)")
-                        .font(DDTypography.metadata)
-                        .foregroundStyle(ddColors.textSecondary)
-                        .contentTransition(.numericText())
-                } else {
-                    Text("Starting\u{2026}")
-                        .font(DDTypography.label)
-                        .foregroundStyle(ddColors.textSecondary)
-                        .transition(reduceMotion ? .identity : .opacity.animation(DDMotion.smooth))
-                }
-            case .pending:
-                EmptyView()
+        switch stage.status {
+        case .completed(let elapsed, let total, _):
+            VStack(spacing: DDSpacing.hairline) {
+                Text("\(total)")
+                    .font(DDTypography.metadata)
+                    .foregroundStyle(ddColors.textSecondary)
+                    .contentTransition(.numericText())
+                Text(ScanProgress.formatElapsed(elapsed))
+                    .font(DDTypography.metadata)
+                    .foregroundStyle(ddColors.textMuted)
             }
+            .frame(height: DDSpacing.pipelineStageDetailHeight, alignment: .top)
+        case .active(let current, let total):
+            if let total, total > 0 {
+                VStack(spacing: DDSpacing.hairline) {
+                    Text("\(current)/\(total)")
+                        .font(DDTypography.metadata)
+                        .foregroundStyle(ddColors.textSecondary)
+                        .contentTransition(.numericText())
+                    ProgressView(value: Double(current), total: Double(total))
+                        .tint(DDColors.accent)
+                        .frame(width: DDSpacing.pipelineLabelMinWidth)
+                        .scaleEffect(y: 0.5)
+                }
+                .frame(height: DDSpacing.pipelineStageDetailHeight, alignment: .top)
+            } else if let total, total == 0 {
+                Spacer()
+                    .frame(height: DDSpacing.pipelineStageDetailHeight)
+            } else if current > 0 {
+                Text("\(current)")
+                    .font(DDTypography.metadata)
+                    .foregroundStyle(ddColors.textSecondary)
+                    .contentTransition(.numericText())
+                    .frame(height: DDSpacing.pipelineStageDetailHeight, alignment: .top)
+            } else {
+                Text("Starting\u{2026}")
+                    .font(DDTypography.label)
+                    .foregroundStyle(ddColors.textSecondary)
+                    .transition(reduceMotion ? .identity : .opacity.animation(DDMotion.smooth))
+                    .frame(height: DDSpacing.pipelineStageDetailHeight, alignment: .top)
+            }
+        case .pending:
+            Spacer()
+                .frame(height: DDSpacing.pipelineStageDetailHeight)
         }
-        .frame(height: DDSpacing.pipelineStageDetailHeight, alignment: .top)
     }
 
     private var fillColor: Color {
@@ -705,14 +695,8 @@ struct PrimaryProgressDisplay: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let elapsed = scan?.liveElapsed(at: context.date) ?? 0
-            let isPaused: Bool = {
-                if case .paused = scan?.pause { return true }
-                return false
-            }()
-            let isPausing: Bool = {
-                if case .pausing = scan?.pause { return true }
-                return false
-            }()
+            let isPaused = scan?.pause.isPaused ?? false
+            let isPausing = scan?.pause.isPausing ?? false
             let barVisualState = Self.progressBarVisualState(
                 isPaused: isPaused,
                 isPausing: isPausing,
@@ -847,28 +831,18 @@ private struct CacheEfficiencyRow: View {
     }
 
     private var perCacheChips: [CacheChip] {
-        var chips: [CacheChip] = []
-        if metadataHits > 0 {
-            let total = metadataHits + metadataMisses
-            let rate = total > 0 ? Int(Double(metadataHits) / Double(total) * 100) : 0
-            chips.append(CacheChip(label: "metadata", hits: metadataHits, rate: rate))
+        let sources: [(String, Int, Int)] = [
+            ("metadata", metadataHits, metadataMisses),
+            ("content", contentHits, contentMisses),
+            ("audio", audioHits, audioMisses),
+            ("score", scoreHits, scoreMisses),
+        ]
+        return sources.compactMap { label, hits, misses in
+            guard hits > 0 else { return nil }
+            let total = hits + misses
+            let rate = total > 0 ? Int(Double(hits) / Double(total) * 100) : 0
+            return CacheChip(label: label, hits: hits, rate: rate)
         }
-        if contentHits > 0 {
-            let total = contentHits + contentMisses
-            let rate = total > 0 ? Int(Double(contentHits) / Double(total) * 100) : 0
-            chips.append(CacheChip(label: "content", hits: contentHits, rate: rate))
-        }
-        if audioHits > 0 {
-            let total = audioHits + audioMisses
-            let rate = total > 0 ? Int(Double(audioHits) / Double(total) * 100) : 0
-            chips.append(CacheChip(label: "audio", hits: audioHits, rate: rate))
-        }
-        if scoreHits > 0 {
-            let total = scoreHits + scoreMisses
-            let rate = total > 0 ? Int(Double(scoreHits) / Double(total) * 100) : 0
-            chips.append(CacheChip(label: "score", hits: scoreHits, rate: rate))
-        }
-        return chips
     }
 
     private var accessibilityText: String {

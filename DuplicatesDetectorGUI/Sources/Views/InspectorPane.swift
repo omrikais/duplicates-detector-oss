@@ -88,20 +88,9 @@ struct PairInspectorPane: View {
                 tagAlbum: meta.tagAlbum
             )
 
-            // Keep recommendation
             if pair.keepPath != nil {
                 Divider()
-                if isKeep {
-                    Label("Recommended to keep", systemImage: "checkmark.circle.fill")
-                        .font(DDTypography.body)
-                        .foregroundStyle(DDColors.success)
-                        .ddGlassPill(size: .medium, tint: DDColors.success.opacity(0.15))
-                } else {
-                    Label("Candidate for removal", systemImage: "minus.circle")
-                        .font(DDTypography.body)
-                        .foregroundStyle(ddColors.textSecondary)
-                        .ddGlassPill(size: .medium)
-                }
+                KeepRecommendationBadge(isKeep: isKeep)
             }
 
             Divider()
@@ -126,30 +115,14 @@ struct PairInspectorPane: View {
                 .font(DDTypography.sectionTitle)
                 .foregroundStyle(ddColors.textPrimary)
 
-            HStack(spacing: DDSpacing.sm) {
-                if path.isPhotosAssetURI {
-                    Button { onAction(.revealInFinder(path)) } label: {
-                        Label("Reveal in Photos", systemImage: "photo.on.rectangle")
-                    }
-                } else {
-                    Button { onAction(.revealInFinder(path)) } label: {
-                        Label("Reveal", systemImage: "folder")
-                    }
-
-                    Button { onAction(.quickLook(path)) } label: {
-                        Label("Open", systemImage: "arrow.up.forward.app")
-                    }
-                }
-
-                Button { handleCopyPath(for: path) } label: {
-                    Label(copyPathLabel(for: path), systemImage: "doc.on.clipboard")
-                }
-
-                Button { handleCopyBoth(for: path) } label: {
-                    Label(copyBothLabel(for: path), systemImage: "doc.on.doc")
-                }
-            }
-            .controlSize(.small)
+            InspectorFileButtons(
+                path: path,
+                copyPathLabel: copyPathLabel(for: path),
+                copyBothLabel: copyBothLabel(for: path),
+                onCopyPath: { handleCopyPath(for: path) },
+                onCopyBoth: { handleCopyBoth(for: path) },
+                onAction: onAction
+            )
 
             if !isResolved {
                 HStack(spacing: DDSpacing.sm) {
@@ -256,61 +229,34 @@ struct GroupInspectorPane: View {
                     tagAlbum: file.tagAlbum
                 )
 
-                // Keep recommendation
-                if isKeep {
+                if isKeep || hasKeepStrategy {
                     Divider()
-                    Label("Recommended to keep", systemImage: "checkmark.circle.fill")
-                        .font(DDTypography.body)
-                        .foregroundStyle(DDColors.success)
-                        .ddGlassPill(size: .medium, tint: DDColors.success.opacity(0.15))
-                } else if hasKeepStrategy {
-                    Divider()
-                    Label("Candidate for removal", systemImage: "minus.circle")
-                        .font(DDTypography.body)
-                        .foregroundStyle(ddColors.textSecondary)
-                        .ddGlassPill(size: .medium)
+                    KeepRecommendationBadge(isKeep: isKeep)
                 }
 
                 Divider()
 
-                // Actions
                 VStack(alignment: .leading, spacing: DDSpacing.sm) {
                     Text("Actions")
                         .font(DDTypography.sectionTitle)
                         .foregroundStyle(ddColors.textPrimary)
 
-                    HStack(spacing: DDSpacing.sm) {
-                        if file.path.isPhotosAssetURI {
-                            Button { onAction(.revealInFinder(file.path)) } label: {
-                                Label("Reveal in Photos", systemImage: "photo.on.rectangle")
-                            }
-                        } else {
-                            Button { onAction(.revealInFinder(file.path)) } label: {
-                                Label("Reveal", systemImage: "folder")
-                            }
-
-                            Button { onAction(.quickLook(file.path)) } label: {
-                                Label("Open", systemImage: "arrow.up.forward.app")
-                            }
-                        }
-
-                        Button { handleCopyPath() } label: {
-                            Label(copyPathLabel, systemImage: "doc.on.clipboard")
-                        }
-                    }
-                    .controlSize(.small)
+                    InspectorFileButtons(
+                        path: file.path,
+                        copyPathLabel: copyPathLabel,
+                        onCopyPath: { handleCopyPath() },
+                        onAction: onAction
+                    )
 
                     if !resolvedPaths.contains(file.path) {
-                        HStack(spacing: DDSpacing.sm) {
-                            InspectorFileActionButton(
-                                path: file.path,
-                                activeAction: activeAction,
-                                isKeep: isKeep,
-                                isReference: file.isReference,
-                                onAction: onAction
-                            )
-                            .controlSize(.small)
-                        }
+                        InspectorFileActionButton(
+                            path: file.path,
+                            activeAction: activeAction,
+                            isKeep: isKeep,
+                            isReference: file.isReference,
+                            onAction: onAction
+                        )
+                        .controlSize(.small)
                     }
                 }
             }
@@ -347,6 +293,67 @@ struct GroupInspectorPane: View {
         clipboardFeedbackResetTask = nil
     }
 
+}
+
+// MARK: - Keep Recommendation Badge
+
+private struct KeepRecommendationBadge: View {
+    let isKeep: Bool
+    @Environment(\.ddColors) private var ddColors
+
+    var body: some View {
+        if isKeep {
+            Label("Recommended to keep", systemImage: "checkmark.circle.fill")
+                .font(DDTypography.body)
+                .foregroundStyle(DDColors.success)
+                .ddGlassPill(size: .medium, tint: DDColors.success.opacity(0.15))
+        } else {
+            Label("Candidate for removal", systemImage: "minus.circle")
+                .font(DDTypography.body)
+                .foregroundStyle(ddColors.textSecondary)
+                .ddGlassPill(size: .medium)
+        }
+    }
+}
+
+// MARK: - Inspector Reveal/Open/Copy Buttons
+
+private struct InspectorFileButtons: View {
+    let path: String
+    let copyPathLabel: String
+    var copyBothLabel: String? = nil
+    var onCopyPath: () -> Void
+    var onCopyBoth: (() -> Void)? = nil
+    var onAction: (PairAction) -> Void
+
+    var body: some View {
+        HStack(spacing: DDSpacing.sm) {
+            if path.isPhotosAssetURI {
+                Button { onAction(.revealInFinder(path)) } label: {
+                    Label("Reveal in Photos", systemImage: "photo.on.rectangle")
+                }
+            } else {
+                Button { onAction(.revealInFinder(path)) } label: {
+                    Label("Reveal", systemImage: "folder")
+                }
+
+                Button { onAction(.quickLook(path)) } label: {
+                    Label("Open", systemImage: "arrow.up.forward.app")
+                }
+            }
+
+            Button { onCopyPath() } label: {
+                Label(copyPathLabel, systemImage: "doc.on.clipboard")
+            }
+
+            if let onCopyBoth, let label = copyBothLabel {
+                Button { onCopyBoth() } label: {
+                    Label(label, systemImage: "doc.on.doc")
+                }
+            }
+        }
+        .controlSize(.small)
+    }
 }
 
 // MARK: - Shared File-Private Components

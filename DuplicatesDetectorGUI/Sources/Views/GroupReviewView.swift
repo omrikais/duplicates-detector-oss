@@ -332,7 +332,6 @@ private struct FilmstripTile: View {
                     modificationDate: file.mtime.map { Date(timeIntervalSince1970: $0) }
                 )
 
-                // Badges
                 HStack(spacing: DDSpacing.xs) {
                     if isActioned {
                         Image(systemName: "checkmark.circle.fill")

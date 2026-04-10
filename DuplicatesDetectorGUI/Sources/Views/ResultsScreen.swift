@@ -1,17 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - Keyboard Navigation Plan
-//
-// The three-pane architecture supports keyboard navigation:
-//   - Up/Down arrows: move queue selection (handled by List's built-in selection)
-//   - Tab: cycle focus between queue, comparison, and inspector panes
-//   - Space: Quick Look on the selected file (via .keyboardShortcut(.space, modifiers: []))
-//   - Enter/Return: Reveal in Finder (via .keyboardShortcut(.return, modifiers: .command))
-//
-// List selection binding provides automatic arrow key navigation.
-// Tab cycling uses @FocusState with FocusedPane enum.
-
 /// Focus target for tab cycling between panes.
 private enum FocusedPane: Hashable {
     case queue
@@ -135,57 +124,34 @@ struct ResultsScreen: View {
         results?.effectivePairMode(for: display.viewMode) ?? true
     }
 
+    private var isPhotosLibraryScan: Bool {
+        store.session.metadata.sourceLabel == SessionMetadata.photosLibraryLabel
+    }
 
-    // Group mode selection (ephemeral view state)
     @State private var selectedGroupID: Int?
     @State private var selectedMemberPath: String?
-    /// Tracks all file paths in the currently selected group for stable identity
-    /// across synthesized-group rebuilds (IDs are renumbered, so we match by content).
+    /// Tracks file paths in the selected group for stable identity across synthesized-group rebuilds.
     @State private var currentGroupSiblingPaths: Set<String> = []
-
-    // Inspector visibility
     @State private var showInspector: Bool = true
-
-    // Bulk action confirmation
     @State private var showBulkActionConfirmation = false
-
-    // Permanent delete confirmation for inspector and comparison-bar actions
     @State private var singleDeleteConfirmation = ResultsSingleDeleteConfirmationState()
-    // Bulk permanent-delete extra confirmation gate
     @State private var confirmPermanentDelete = false
-
-    // Move destination picker
     @State private var showMoveDestinationPicker = false
     @AppStorage("lastMoveDestination") private var lastMoveDestination: String = ""
-
-    // Undo script generation
     @State private var showUndoScript = false
     @State private var undoScriptContent: String = ""
     @State private var isGeneratingUndo = false
-
-    // Action log viewer
     @State private var showActionLog = false
-
-    // Ignore list management
     @State private var showIgnoreList = false
-
-    // Refine results (replay with new settings)
     @State private var showRefineSheet = false
-
-    // Export state
     @State private var isExporting = false
     @State private var exportError: String?
     @State private var isShowingCopySummaryFeedback = false
     @State private var copySummaryFeedbackTask: Task<Void, Never>?
-
-    // Insights panel state
     @State private var sessionEntries: [SessionRegistry.Entry] = []
-
-    // Both-reference pair auto-skip (only during forward sequential review)
     @State private var bothRefSkipTask: Task<Void, Never>?
     /// When true, both-reference pairs are auto-skipped after 1500ms.
-    /// Set to false by manual backward navigation or queue clicks so the
-    /// user can return to and inspect these pairs.
+    /// False during manual backward navigation so the user can inspect these pairs.
     @State private var autoSkipBothRef = true
     @FocusState private var focusedPane: FocusedPane?
 
@@ -439,7 +405,7 @@ struct ResultsScreen: View {
                                 .disabled(store.session.results == nil)
                             Button("Export as CSV\u{2026}") { store.exportCSV() }
                             // HTML and shell exports use CLI --replay which can't handle photos:// URIs
-                            if store.session.metadata.sourceLabel != SessionMetadata.photosLibraryLabel {
+                            if !isPhotosLibraryScan {
                                 Button("Export as HTML Report\u{2026}") { exportViaReplay(format: .html) }
                                     .disabled(store.session.results == nil)
                                 Button("Export as Shell Script\u{2026}") { exportViaReplay(format: .shell) }
@@ -453,7 +419,7 @@ struct ResultsScreen: View {
                         .accessibilityHint("Export results in various formats")
                     }
                     // Refine uses CLI --replay which can't handle photos:// URIs
-                    if store.session.metadata.sourceLabel != SessionMetadata.photosLibraryLabel {
+                    if !isPhotosLibraryScan {
                         ToolbarItem(placement: .automatic) {
                             Button { showRefineSheet = true } label: {
                                 Label("Refine Results", systemImage: "slider.horizontal.3")
@@ -541,7 +507,7 @@ struct ResultsScreen: View {
                             .accessibilityLabel(display.showInsights ? "Hide Insights" : "Show Insights")
                         }
 
-                        if store.session.metadata.sourceLabel != SessionMetadata.photosLibraryLabel {
+                        if !isPhotosLibraryScan {
                             WatchToggleButton(
                                 isWatching: store.watchActive,
                                 onStart: { store.send(.setWatchEnabled(true)) },
@@ -572,12 +538,7 @@ struct ResultsScreen: View {
                 currentGroupSiblingPaths = Set(group.files.map(\.path))
             }
         } else {
-            let isValid = store.selectedPairID.map { id in
-                store.filteredPairs.contains { $0.pairIdentifier == id }
-            } ?? false
-            if !isValid {
-                store.send(.selectPair(store.filteredPairs.first?.pairIdentifier))
-            }
+            revalidatePairSelection()
         }
     }
 
@@ -657,7 +618,7 @@ struct ResultsScreen: View {
             return "Permanently delete \(candidates.candidates.count) files (\(size))?"
         case .moveTo:
             return "Move \(candidates.candidates.count) files (\(size))?"
-        default:
+        case .hardlink, .symlink, .reflink:
             return "\(candidates.candidates.count) files (\(size))"
         }
     }
@@ -706,7 +667,7 @@ struct ResultsScreen: View {
             }
             Button("Cancel", role: .cancel) {}
 
-        default:
+        case .hardlink, .symlink, .reflink:
             Button("Cancel", role: .cancel) {}
         }
     }
@@ -829,14 +790,22 @@ struct ResultsScreen: View {
         }
     }
 
-    private func parseSessionDate(_ isoString: String?) -> Date? {
-        guard let isoString else { return nil }
+    private static let isoFormatterFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.date(from: isoString) ?? {
-            f.formatOptions = [.withInternetDateTime]
-            return f.date(from: isoString)
-        }()
+        return f
+    }()
+
+    private static let isoFormatterPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private func parseSessionDate(_ isoString: String?) -> Date? {
+        guard let isoString else { return nil }
+        return Self.isoFormatterFractional.date(from: isoString)
+            ?? Self.isoFormatterPlain.date(from: isoString)
     }
 
     /// Load session entries from the registry for trend analysis.
@@ -1352,19 +1321,22 @@ struct ResultsScreen: View {
         }
     }
 
+    /// Ensures the selected pair is still visible in the filtered list; selects the first if not.
+    private func revalidatePairSelection() {
+        let isValid = store.selectedPairID.map { id in
+            store.filteredPairs.contains { $0.pairIdentifier == id }
+        } ?? false
+        if !isValid {
+            store.send(.selectPair(store.filteredPairs.first?.pairIdentifier))
+        }
+    }
+
     /// After an action (trash/delete/move/ignore), revalidate pair selection and group member selection.
     private func revalidateAfterAction() {
         let actionedPaths = results?.actionedPaths ?? []
         if effectivePairMode {
-            let isValid = store.selectedPairID.map { id in
-                store.filteredPairs.contains { $0.pairIdentifier == id }
-            } ?? false
-            if !isValid {
-                store.send(.selectPair(store.filteredPairs.first?.pairIdentifier))
-            }
+            revalidatePairSelection()
         } else {
-            // Match by member path first; if the selected member was actioned,
-            // fall back to any sibling still in a group.
             let matchedGroup: GroupResult? = findGroupContaining(
                 primaryPath: selectedMemberPath,
                 siblingPaths: currentGroupSiblingPaths
@@ -1373,12 +1345,10 @@ struct ResultsScreen: View {
             if let group = matchedGroup {
                 selectedGroupID = group.groupId
                 currentGroupSiblingPaths = Set(group.files.map(\.path))
-                // If selected member was actioned, pick next available
                 if let path = selectedMemberPath, actionedPaths.contains(path) {
                     selectedMemberPath = group.files.first { !actionedPaths.contains($0.path) }?.path
                 }
             } else {
-                // Group removed entirely -- jump to first visible group
                 let first = store.filteredGroups.first
                 selectedGroupID = first?.groupId
                 selectedMemberPath = first?.files.first?.path
@@ -1387,18 +1357,12 @@ struct ResultsScreen: View {
         }
     }
 
-    /// Re-selects a visible item when filtering removes the current selection,
-    /// or when results reappear after the selection was cleared to nil.
+    /// Re-selects a visible item when filtering removes the current selection.
     /// Only recomputes the selected group member when the search query changed,
     /// preserving manual filmstrip selection on sort-only changes.
     private func revalidateSelection(searchChanged: Bool) {
         if effectivePairMode {
-            let isValid = store.selectedPairID.map { id in
-                store.filteredPairs.contains { $0.pairIdentifier == id }
-            } ?? false
-            if !isValid {
-                store.send(.selectPair(store.filteredPairs.first?.pairIdentifier))
-            }
+            revalidatePairSelection()
         } else {
             let currentGroup = findGroupContaining(
                 primaryPath: selectedMemberPath,
