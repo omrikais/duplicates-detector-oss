@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Add `duplicates-detector(1)` man page, installed via pip and included in Homebrew cask and app bundle
+
 ### Changed
 - Settings window is now resizable (replaced fixed-size Settings scene with a Window scene)
 
