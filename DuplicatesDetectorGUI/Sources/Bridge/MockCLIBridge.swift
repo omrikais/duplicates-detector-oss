@@ -243,13 +243,16 @@ actor MockCLIBridge: CLIBridgeProtocol {
     }
 
     /// Returns a path under the mock temp dir, copying a real file from `sourceDir` so
-    /// QuickLook can generate real thumbnails. Skips the copy if the file already exists.
+    /// QuickLook can generate real thumbnails. Falls back to an empty placeholder if the
+    /// source is unavailable (e.g. on CI where demo media isn't present).
     private static func marketingMediaPath(_ filename: String, sourceDir: String) -> String {
         let dest = mockMediaDir.appendingPathComponent(filename)
         if !FileManager.default.fileExists(atPath: dest.path) {
             let source = URL(fileURLWithPath: sourceDir)
                 .appendingPathComponent(filename)
-            try? FileManager.default.copyItem(at: source, to: dest)
+            if (try? FileManager.default.copyItem(at: source, to: dest)) == nil {
+                FileManager.default.createFile(atPath: dest.path, contents: Data())
+            }
         }
         return dest.path
     }
