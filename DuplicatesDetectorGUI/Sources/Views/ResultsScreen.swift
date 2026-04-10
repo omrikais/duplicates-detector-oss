@@ -861,7 +861,6 @@ struct ResultsScreen: View {
                     activeAction: display.activeAction,
                     currentPairIndex: store.currentPairIndex,
                     totalFilteredPairs: store.totalFilteredPairs,
-                    onAction: { action in store.trackActionTask(Task { await store.handleAction(action) }) },
                     onKeepA: { performKeepA(pair: pair) },
                     onKeepB: { performKeepB(pair: pair) },
                     onPrevious: { autoSkipBothRef = false; store.send(.previousPair) },

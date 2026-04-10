@@ -10,7 +10,6 @@ struct ComparisonPanel: View {
     let activeAction: ActionType
     let currentPairIndex: Int?
     let totalFilteredPairs: Int
-    var onAction: (PairAction) -> Void
     var onKeepA: () -> Void
     var onKeepB: () -> Void
     var onPrevious: () -> Void
@@ -230,7 +229,7 @@ struct MetadataDiffTable: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DDSpacing.sm) {
             Text("Metadata Comparison")
-                .font(DDTypography.body.weight(.semibold))
+                .font(DDTypography.sectionTitle)
                 .foregroundStyle(ddColors.textPrimary)
 
             Grid(alignment: .leading, horizontalSpacing: DDSpacing.md, verticalSpacing: DDSpacing.sm) {
@@ -248,128 +247,50 @@ struct MetadataDiffTable: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                // Size (always present)
-                diffRow(
-                    "Size",
-                    DDFormatters.formatFileSize(metaA.fileSize),
-                    DDFormatters.formatFileSize(metaB.fileSize),
-                    differs: metaA.fileSize != metaB.fileSize
-                )
-
-                // Duration
-                if metaA.duration != nil || metaB.duration != nil {
-                    let durA = metaA.duration.map { DDFormatters.formatDuration($0) } ?? "\u{2014}"
-                    let durB = metaB.duration.map { DDFormatters.formatDuration($0) } ?? "\u{2014}"
-                    diffRow("Duration", durA, durB, differs: durA != durB)
-                }
-
-                // Resolution
-                if metaA.width != nil || metaB.width != nil {
-                    diffRow(
-                        "Resolution",
-                        DDFormatters.formatResolution(width: metaA.width, height: metaA.height) ?? "\u{2014}",
-                        DDFormatters.formatResolution(width: metaB.width, height: metaB.height) ?? "\u{2014}",
-                        differs: metaA.width != metaB.width || metaA.height != metaB.height
-                    )
-                }
-
-                // Codec
-                if metaA.codec != nil || metaB.codec != nil {
-                    diffRow(
-                        "Codec",
-                        metaA.codec ?? "\u{2014}",
-                        metaB.codec ?? "\u{2014}",
-                        differs: metaA.codec != metaB.codec
-                    )
-                }
-
-                // Bitrate
-                if metaA.bitrate != nil || metaB.bitrate != nil {
-                    let brA = metaA.bitrate.map { DDFormatters.formatBitrate($0) } ?? "\u{2014}"
-                    let brB = metaB.bitrate.map { DDFormatters.formatBitrate($0) } ?? "\u{2014}"
-                    diffRow("Bitrate", brA, brB, differs: brA != brB)
-                }
-
-                // Framerate
-                if metaA.framerate != nil || metaB.framerate != nil {
-                    let fpsA = metaA.framerate.map { DDFormatters.formatFramerate($0) } ?? "\u{2014}"
-                    let fpsB = metaB.framerate.map { DDFormatters.formatFramerate($0) } ?? "\u{2014}"
-                    diffRow("FPS", fpsA, fpsB, differs: fpsA != fpsB)
-                }
-
-                // Audio channels
-                if metaA.audioChannels != nil || metaB.audioChannels != nil {
-                    diffRow(
-                        "Audio",
-                        metaA.audioChannels.map { DDFormatters.formatAudioChannels($0) } ?? "\u{2014}",
-                        metaB.audioChannels.map { DDFormatters.formatAudioChannels($0) } ?? "\u{2014}",
-                        differs: metaA.audioChannels != metaB.audioChannels
-                    )
-                }
-
-                // Modified
-                if metaA.mtime != nil || metaB.mtime != nil {
-                    let mtA = metaA.mtime.map { DDFormatters.formatRelativeDate($0) } ?? "\u{2014}"
-                    let mtB = metaB.mtime.map { DDFormatters.formatRelativeDate($0) } ?? "\u{2014}"
-                    diffRow("Modified", mtA, mtB, differs: mtA != mtB)
-                }
-
-                // Audio tags
-                if metaA.tagTitle != nil || metaB.tagTitle != nil {
-                    diffRow("Title",
-                            metaA.tagTitle ?? "\u{2014}",
-                            metaB.tagTitle ?? "\u{2014}",
-                            differs: metaA.tagTitle != metaB.tagTitle)
-                }
-
-                if metaA.tagArtist != nil || metaB.tagArtist != nil {
-                    diffRow("Artist",
-                            metaA.tagArtist ?? "\u{2014}",
-                            metaB.tagArtist ?? "\u{2014}",
-                            differs: metaA.tagArtist != metaB.tagArtist)
-                }
-
-                if metaA.tagAlbum != nil || metaB.tagAlbum != nil {
-                    diffRow("Album",
-                            metaA.tagAlbum ?? "\u{2014}",
-                            metaB.tagAlbum ?? "\u{2014}",
-                            differs: metaA.tagAlbum != metaB.tagAlbum)
-                }
-
-                // Document metadata
-                if metaA.pageCount != nil || metaB.pageCount != nil {
-                    diffRow(
-                        "Pages",
-                        metaA.pageCount.map(String.init) ?? "\u{2014}",
-                        metaB.pageCount.map(String.init) ?? "\u{2014}",
-                        differs: metaA.pageCount != metaB.pageCount
-                    )
-                }
-
-                if metaA.docTitle != nil || metaB.docTitle != nil {
-                    diffRow("Title",
-                            metaA.docTitle ?? "\u{2014}",
-                            metaB.docTitle ?? "\u{2014}",
-                            differs: metaA.docTitle != metaB.docTitle)
-                }
-
-                if metaA.docAuthor != nil || metaB.docAuthor != nil {
-                    diffRow("Author",
-                            metaA.docAuthor ?? "\u{2014}",
-                            metaB.docAuthor ?? "\u{2014}",
-                            differs: metaA.docAuthor != metaB.docAuthor)
-                }
-
-                if metaA.docCreated != nil || metaB.docCreated != nil {
-                    diffRow("Created",
-                            metaA.docCreated ?? "\u{2014}",
-                            metaB.docCreated ?? "\u{2014}",
-                            differs: metaA.docCreated != metaB.docCreated)
+                let rows = metadataRows
+                ForEach(rows.indices, id: \.self) { i in
+                    diffRow(rows[i].label, rows[i].valueA, rows[i].valueB,
+                            differs: rows[i].valueA != rows[i].valueB)
                 }
             }
         }
         .padding(DDDensity.regular)
         .background(DDColors.surface2, in: RoundedRectangle(cornerRadius: DDRadius.medium))
+    }
+
+    private var metadataRows: [(label: String, valueA: String, valueB: String)] {
+        var rows: [(label: String, valueA: String, valueB: String)] = []
+        let dash = "\u{2014}"
+
+        rows.append(("Size", DDFormatters.formatFileSize(metaA.fileSize),
+                      DDFormatters.formatFileSize(metaB.fileSize)))
+
+        func addIfPresent(_ label: String, _ a: String?, _ b: String?) {
+            if a != nil || b != nil { rows.append((label, a ?? dash, b ?? dash)) }
+        }
+
+        addIfPresent("Duration", metaA.duration.map { DDFormatters.formatDuration($0) },
+                      metaB.duration.map { DDFormatters.formatDuration($0) })
+        addIfPresent("Resolution", DDFormatters.formatResolution(width: metaA.width, height: metaA.height),
+                      DDFormatters.formatResolution(width: metaB.width, height: metaB.height))
+        addIfPresent("Codec", metaA.codec, metaB.codec)
+        addIfPresent("Bitrate", metaA.bitrate.map { DDFormatters.formatBitrate($0) },
+                      metaB.bitrate.map { DDFormatters.formatBitrate($0) })
+        addIfPresent("FPS", metaA.framerate.map { DDFormatters.formatFramerate($0) },
+                      metaB.framerate.map { DDFormatters.formatFramerate($0) })
+        addIfPresent("Audio", metaA.audioChannels.map { DDFormatters.formatAudioChannels($0) },
+                      metaB.audioChannels.map { DDFormatters.formatAudioChannels($0) })
+        addIfPresent("Modified", metaA.mtime.map { DDFormatters.formatRelativeDate($0) },
+                      metaB.mtime.map { DDFormatters.formatRelativeDate($0) })
+        addIfPresent("Title", metaA.tagTitle, metaB.tagTitle)
+        addIfPresent("Artist", metaA.tagArtist, metaB.tagArtist)
+        addIfPresent("Album", metaA.tagAlbum, metaB.tagAlbum)
+        addIfPresent("Pages", metaA.pageCount.map(String.init), metaB.pageCount.map(String.init))
+        addIfPresent("Title", metaA.docTitle, metaB.docTitle)
+        addIfPresent("Author", metaA.docAuthor, metaB.docAuthor)
+        addIfPresent("Created", metaA.docCreated, metaB.docCreated)
+
+        return rows
     }
 
     private func diffRow(_ label: String, _ valueA: String, _ valueB: String, differs: Bool) -> some View {
@@ -411,7 +332,7 @@ struct ScoreBreakdownDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DDSpacing.sm) {
             Text("Score Breakdown")
-                .font(DDTypography.body.weight(.semibold))
+                .font(DDTypography.sectionTitle)
                 .foregroundStyle(ddColors.textPrimary)
 
             BreakdownBar(breakdown: breakdown, detail: detail, totalScore: totalScore)
@@ -422,7 +343,7 @@ struct ScoreBreakdownDetail: View {
                     ComparatorRow(
                         key: key,
                         raw: detailScore.raw,
-                        contribution: breakdown[key] ?? nil
+                        contribution: breakdown[key].flatMap { $0 }
                     )
                 }
             }
@@ -483,7 +404,7 @@ private struct ComparatorRow: View {
     ComparisonPanel(
         pair: pair, scanMode: .video, activeAction: .trash,
         currentPairIndex: 0, totalFilteredPairs: 2,
-        onAction: { _ in }, onKeepA: {}, onKeepB: {}, onPrevious: {},
+        onKeepA: {}, onKeepB: {}, onPrevious: {},
         onSkip: {}, onSkipAndIgnore: {}
     )
     .frame(width: 700, height: 700)
@@ -494,7 +415,7 @@ private struct ComparatorRow: View {
     ComparisonPanel(
         pair: pair, scanMode: .video, activeAction: .trash,
         currentPairIndex: 1, totalFilteredPairs: 2,
-        onAction: { _ in }, onKeepA: {}, onKeepB: {}, onPrevious: {},
+        onKeepA: {}, onKeepB: {}, onPrevious: {},
         onSkip: {}, onSkipAndIgnore: {}
     )
     .frame(width: 700, height: 700)

@@ -48,30 +48,30 @@ def _version_tuple(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split("."))
 
 
-def _latest_tag_version() -> tuple[int, ...] | None:
-    """Return the version tuple of the latest vX.Y.Z tag, or None."""
-    result = subprocess.run(
-        ["git", "tag", "--list", "v*", "--sort=-v:refname"],
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run a git command with capture and return the result."""
+    return subprocess.run(
+        ["git", *args],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
     )
+
+
+def _all_tag_versions() -> set[tuple[int, ...]]:
+    """Return all vX.Y.Z tag versions as a set of tuples."""
+    result = _git("tag", "--list", "v*")
+    versions: set[tuple[int, ...]] = set()
     for line in result.stdout.splitlines():
-        line = line.strip()
-        m = re.match(r"^v(\d+\.\d+\.\d+)$", line)
+        m = re.match(r"^v(\d+\.\d+\.\d+)$", line.strip())
         if m:
-            return _version_tuple(m.group(1))
-    return None
+            versions.add(_version_tuple(m.group(1)))
+    return versions
 
 
 def fetch_remote_tags() -> None:
     """Fetch tags from the remote so local tag list is up to date."""
-    result = subprocess.run(
-        ["git", "fetch", "--tags"],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-    )
+    result = _git("fetch", "--tags")
     if result.returncode != 0:
         print(f"Warning: git fetch --tags failed: {result.stderr.strip()}")
 
@@ -80,28 +80,19 @@ def validate_version(version: str) -> None:
     if not VERSION_RE.match(version):
         sys.exit(f"Error: '{version}' is not valid semver (expected X.Y.Z)")
 
-    tag_check = subprocess.run(
-        ["git", "tag", "--list", f"v{version}"],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-    )
-    if tag_check.stdout.strip():
+    existing = _all_tag_versions()
+    requested = _version_tuple(version)
+
+    if requested in existing:
         sys.exit(f"Error: tag v{version} already exists")
 
-    latest = _latest_tag_version()
-    if latest is not None and _version_tuple(version) <= latest:
-        latest_str = ".".join(str(x) for x in latest)
+    if existing and requested <= max(existing):
+        latest_str = ".".join(str(x) for x in max(existing))
         sys.exit(f"Error: {version} is not greater than the latest tag ({latest_str})")
 
 
 def check_clean_tree() -> None:
-    result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-    )
+    result = _git("status", "--porcelain")
     if result.stdout.strip():
         sys.exit("Error: working tree is not clean — commit or stash changes first")
 
@@ -152,38 +143,32 @@ def stamp_project_yml(version: str, *, dry_run: bool) -> None:
     if dry_run:
         print(f'Would stamp project.yml: MARKETING_VERSION -> "{version}"')
     else:
-        stamped = MARKETING_VERSION_RE.sub(rf"\g<1>{version}\2", text)
+        stamped = MARKETING_VERSION_RE.sub(rf"\g<1>{version}\g<2>", text)
         PROJECT_YML.write_text(stamped)
         print(f"Stamped project.yml MARKETING_VERSION with {version}")
 
 
-def commit_and_push(version: str, *, dry_run: bool) -> None:
+def commit_tag_and_push(version: str, *, dry_run: bool) -> None:
+    tag = f"v{version}"
+    changelog_rel = str(CHANGELOG.relative_to(REPO_ROOT))
+    project_yml_rel = str(PROJECT_YML.relative_to(REPO_ROOT))
+
     if dry_run:
-        print("Would run: git add CHANGELOG.md DuplicatesDetectorGUI/project.yml")
-        print(f"Would run: git commit -m 'chore: release v{version}'")
-        print("Would run: git push")
+        print(f"Would run: git add {changelog_rel} {project_yml_rel}")
+        print(f"Would run: git commit -m 'chore: release {tag}'")
+        print(f"Would run: git tag -a {tag} -m {tag}")
+        print(f"Would run: git push origin HEAD {tag}")
         return
 
-    subprocess.run(["git", "add", "CHANGELOG.md", "DuplicatesDetectorGUI/project.yml"], check=True, cwd=REPO_ROOT)
+    subprocess.run(["git", "add", changelog_rel, project_yml_rel], check=True, cwd=REPO_ROOT)
     subprocess.run(
-        ["git", "commit", "-m", f"chore: release v{version}"],
+        ["git", "commit", "-m", f"chore: release {tag}"],
         check=True,
         cwd=REPO_ROOT,
     )
-    subprocess.run(["git", "push"], check=True, cwd=REPO_ROOT)
-    print(f"Pushed release commit for v{version}")
-
-
-def create_and_push_tag(version: str, *, dry_run: bool) -> None:
-    tag = f"v{version}"
-    if dry_run:
-        print(f"Would run: git tag {tag}")
-        print(f"Would run: git push origin {tag}")
-        return
-
     subprocess.run(["git", "tag", "-a", tag, "-m", tag], check=True, cwd=REPO_ROOT)
-    subprocess.run(["git", "push", "origin", tag], check=True, cwd=REPO_ROOT)
-    print(f"Pushed tag {tag}")
+    subprocess.run(["git", "push", "origin", "HEAD", tag], check=True, cwd=REPO_ROOT)
+    print(f"Pushed release commit and tag {tag}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -195,20 +180,19 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     # Release flow
-    version: str = args.version
-    dry_run: bool = args.dry_run
+    version = args.version
+    dry_run = args.dry_run
 
     if dry_run:
         print(f"=== DRY RUN: release v{version} ===\n")
 
-    fetch_remote_tags()
-    validate_version(version)
     if not dry_run:
         check_clean_tree()
+    fetch_remote_tags()
+    validate_version(version)
     stamp_changelog(version, dry_run=dry_run)
     stamp_project_yml(version, dry_run=dry_run)
-    commit_and_push(version, dry_run=dry_run)
-    create_and_push_tag(version, dry_run=dry_run)
+    commit_tag_and_push(version, dry_run=dry_run)
 
     if not dry_run:
         print(f"\nRelease v{version} tagged and pushed. CI will build and publish the release.")

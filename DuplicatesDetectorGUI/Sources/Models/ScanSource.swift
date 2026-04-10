@@ -24,18 +24,22 @@ extension String {
     /// True if this path is a Photos Library synthetic URI (e.g. `photos://asset/ABC-123`).
     var isPhotosAssetURI: Bool { hasPrefix(Self.photosAssetPrefix) }
 
+    /// Parse a Photos URI into (assetID, fragment). Returns nil for non-Photos paths.
+    private var photosURIComponents: (assetID: String, fragment: String?)? {
+        guard isPhotosAssetURI else { return nil }
+        let raw = String(dropFirst(Self.photosAssetPrefix.count))
+        if let hashIndex = raw.firstIndex(of: "#") {
+            let id = String(raw[raw.startIndex..<hashIndex])
+            let frag = String(raw[raw.index(after: hashIndex)...])
+            return (id, frag.isEmpty ? nil : frag)
+        }
+        return (raw, nil)
+    }
+
     /// Extract the PHAsset localIdentifier from a `photos://asset/` URI.
     /// Strips any `#filename` fragment appended for display purposes.
     /// Returns `nil` for non-Photos paths.
-    var photosAssetID: String? {
-        guard isPhotosAssetURI else { return nil }
-        let raw = String(dropFirst(Self.photosAssetPrefix.count))
-        // Strip fragment (original filename) if present
-        if let hashIndex = raw.firstIndex(of: "#") {
-            return String(raw[raw.startIndex..<hashIndex])
-        }
-        return raw
-    }
+    var photosAssetID: String? { photosURIComponents?.assetID }
 
     /// Human-readable display name for a file path.
     ///
@@ -43,19 +47,9 @@ extension String {
     /// URI fragment (e.g. `IMG_1234.JPG`), falling back to a truncated UUID.
     /// For filesystem paths, returns the last path component (filename).
     var displayFileName: String {
-        guard isPhotosAssetURI else { return fileName }
-        // Extract original filename from fragment
-        let raw = String(dropFirst(Self.photosAssetPrefix.count))
-        if let hashIndex = raw.firstIndex(of: "#") {
-            let name = String(raw[raw.index(after: hashIndex)...])
-            if !name.isEmpty { return name }
-        }
-        // Fallback for legacy URIs without fragment
-        guard let assetID = photosAssetID else { return fileName }
-        let uuid = assetID.prefix(while: { $0 != "/" })
-        if uuid.count > 8 {
-            return "Photo \(uuid.prefix(8))\u{2026}"
-        }
-        return "Photo \(uuid)"
+        guard let components = photosURIComponents else { return fileName }
+        if let name = components.fragment { return name }
+        let uuid = components.assetID.prefix(while: { $0 != "/" })
+        return uuid.count > 8 ? "Photo \(uuid.prefix(8))\u{2026}" : "Photo \(uuid)"
     }
 }

@@ -194,8 +194,7 @@ struct FileMetadataAlbumNamesTests {
 
     @Test("albumNames round-trips through encoding/decoding")
     func albumNamesRoundTrips() throws {
-        var original = FileMetadata(fileSize: 500)
-        original.albumNames = ["Album A", "Album B"]
+        let original = FileMetadata(fileSize: 500, albumNames: ["Album A", "Album B"])
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         let data = try encoder.encode(original)

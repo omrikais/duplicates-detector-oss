@@ -26,7 +26,7 @@ struct HeatmapCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DDSpacing.xxs) {
-            Text(stat.path.split(separator: "/").last.map(String.init) ?? stat.path)
+            Text(stat.path.fileName)
                 .font(DDTypography.label)
                 .lineLimit(1)
             Text("\(Int(stat.duplicateDensity * 100))% density")

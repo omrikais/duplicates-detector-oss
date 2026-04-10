@@ -41,44 +41,45 @@ class TestExtractReleaseNotes:
             assert release.extract_release_notes("9.9.9") == ""
 
 
-class TestCreateAndPushTag:
-    """create_and_push_tag() creates a git tag and pushes it."""
+class TestCommitTagAndPush:
+    """commit_tag_and_push() commits, tags, and pushes in one call."""
 
     def test_dry_run_prints_without_executing(self, capsys: pytest.CaptureFixture[str]):
-        release.create_and_push_tag("2.0.0", dry_run=True)
+        release.commit_tag_and_push("2.0.0", dry_run=True)
         output = capsys.readouterr().out
         assert "Would run" in output
         assert "v2.0.0" in output
 
     @patch("release.subprocess.run")
-    def test_creates_and_pushes_tag(self, mock_run: MagicMock):
+    def test_commits_tags_and_pushes(self, mock_run: MagicMock):
         mock_run.return_value = MagicMock(returncode=0)
-        release.create_and_push_tag("2.0.0", dry_run=False)
+        release.commit_tag_and_push("2.0.0", dry_run=False)
         calls = [c.args[0] for c in mock_run.call_args_list]
         assert ["git", "tag", "-a", "v2.0.0", "-m", "v2.0.0"] in calls
-        assert ["git", "push", "origin", "v2.0.0"] in calls
+        # Branch and tag pushed together in one call
+        assert ["git", "push", "origin", "HEAD", "v2.0.0"] in calls
 
 
 class TestMainFlow:
-    """main() no longer calls create_github_release."""
+    """main() calls the unified commit_tag_and_push."""
 
-    @patch("release.create_and_push_tag")
-    @patch("release.commit_and_push")
+    @patch("release.commit_tag_and_push")
     @patch("release.stamp_changelog")
+    @patch("release.stamp_project_yml")
     @patch("release.check_clean_tree")
     @patch("release.validate_version")
     @patch("release.fetch_remote_tags")
-    def test_main_calls_tag_not_gh_release(
+    def test_main_calls_commit_tag_and_push(
         self,
         mock_fetch: MagicMock,
         mock_validate: MagicMock,
         mock_clean: MagicMock,
+        mock_stamp_yml: MagicMock,
         mock_stamp: MagicMock,
-        mock_commit: MagicMock,
-        mock_tag: MagicMock,
+        mock_commit_tag: MagicMock,
     ):
         release.main(["2.0.0"])
-        mock_tag.assert_called_once_with("2.0.0", dry_run=False)
+        mock_commit_tag.assert_called_once_with("2.0.0", dry_run=False)
 
 
 class TestExtractNotesSubcommand:

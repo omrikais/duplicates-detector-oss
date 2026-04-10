@@ -24,7 +24,6 @@ struct ThumbnailView: View {
     private static let base64Cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 200
-        cache.totalCostLimit = 50 * 1024 * 1024  // 50 MB
         return cache
     }()
 

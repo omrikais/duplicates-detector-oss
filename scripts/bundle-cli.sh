@@ -69,13 +69,9 @@ echo "  Copied stdlib into venv"
 #     python3 that spawns Resources/Python.app. The versioned binary
 #     (python3.XX) is always the real interpreter. Overwrite if different.
 VERSIONED_BIN="$BUNDLE_OUTPUT/venv/bin/python${PYTHON_VER}"
-if [ -f "$VERSIONED_BIN" ]; then
-    HASH_GENERIC="$(md5 -q "$BUNDLE_OUTPUT/venv/bin/python3")"
-    HASH_VERSIONED="$(md5 -q "$VERSIONED_BIN")"
-    if [ "$HASH_GENERIC" != "$HASH_VERSIONED" ]; then
-        echo "  python3 is a launcher stub — replacing with real interpreter"
-        cp "$VERSIONED_BIN" "$BUNDLE_OUTPUT/venv/bin/python3"
-    fi
+if [ -f "$VERSIONED_BIN" ] && ! cmp -s "$BUNDLE_OUTPUT/venv/bin/python3" "$VERSIONED_BIN"; then
+    echo "  python3 is a launcher stub — replacing with real interpreter"
+    cp "$VERSIONED_BIN" "$BUNDLE_OUTPUT/venv/bin/python3"
 fi
 
 # 4c. Bundle Python shared library, framework resources, and fix load paths
@@ -84,7 +80,7 @@ BASE_PREFIX="$("$BUNDLE_OUTPUT/venv/bin/python3" -c "import sys; print(sys.base_
 DYLIB_REF="$(otool -L "$BUNDLE_OUTPUT/venv/bin/python3" | awk 'NR>1 && /[Pp]ython/ {print $1; exit}')"
 if [ -n "$DYLIB_REF" ] && [[ "$DYLIB_REF" != @* ]]; then
     # Resolve symlinks to the actual file
-    DYLIB_REAL="$(python3 -c "import os; print(os.path.realpath('$DYLIB_REF'))")"
+    DYLIB_REAL="$("$PYTHON_BIN" -c "import os; print(os.path.realpath('$DYLIB_REF'))")"
     if [ -f "$DYLIB_REAL" ]; then
         DYLIB_NAME="$(basename "$DYLIB_REF")"
         DYLIB_DEST="$BUNDLE_OUTPUT/venv/lib/$DYLIB_NAME"
@@ -102,7 +98,9 @@ if [ -n "$DYLIB_REF" ] && [[ "$DYLIB_REF" != @* ]]; then
         # Re-sign after modifying (Apple Silicon kills invalidly-signed binaries)
         codesign --force --sign - "$BUNDLE_OUTPUT/venv/bin/python3"
         codesign --force --sign - "$DYLIB_DEST"
-        [ -f "$VERSIONED_BIN" ] && codesign --force --sign - "$VERSIONED_BIN" 2>/dev/null || true
+        if [ -f "$VERSIONED_BIN" ]; then
+            codesign --force --sign - "$VERSIONED_BIN"
+        fi
         echo "  Bundled dylib: $DYLIB_REF → @executable_path/../lib/$DYLIB_NAME"
 
         # 4c-ii. Bundle Resources/Python.app if present (framework builds).
@@ -190,14 +188,13 @@ chmod +x "$BUNDLE_OUTPUT/duplicates-detector"
 # 8. Strip unnecessary files
 echo "--- Stripping unnecessary files ---"
 
-find "$BUNDLE_OUTPUT/venv" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-find "$BUNDLE_OUTPUT/venv" -name "*.pyc" -delete 2>/dev/null || true
-# Remove Python config dirs — they contain symlinks that violate Apple's bundle
-# signing rules and are only needed for building C extensions (not at runtime).
-find "$BUNDLE_OUTPUT/venv" -type d -name "config-*-darwin" -exec rm -rf {} + 2>/dev/null || true
+# Remove __pycache__ dirs (which contain all .pyc files) and Python config dirs
+# (config dirs contain symlinks that violate Apple's bundle signing rules).
+find "$BUNDLE_OUTPUT/venv" -type d \( -name "__pycache__" -o -name "config-*-darwin" \) -exec rm -rf {} + 2>/dev/null || true
 # Remove pip and setuptools (bundled venv is immutable)
-PATH="$BUNDLE_OUTPUT/venv/bin:$PATH" "$BUNDLE_OUTPUT/venv/bin/python3" -m pip uninstall -y pip setuptools 2>/dev/null || true
-rm -f "$BUNDLE_OUTPUT/venv/bin/pip"* "$BUNDLE_OUTPUT/venv/bin/easy_install"* 2>/dev/null || true
+rm -rf "$BUNDLE_OUTPUT/venv/lib/python${PYTHON_VER}/site-packages/pip"* \
+       "$BUNDLE_OUTPUT/venv/lib/python${PYTHON_VER}/site-packages/setuptools"* \
+       "$BUNDLE_OUTPUT/venv/bin/pip"* "$BUNDLE_OUTPUT/venv/bin/easy_install"*
 
 # 9. Verify — the bundle must work with ONLY its own PATH (no system Python)
 echo "--- Verifying CLI bundle ---"

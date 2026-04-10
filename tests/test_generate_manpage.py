@@ -15,38 +15,38 @@ import generate_manpage  # noqa: E402
 class TestGenerate:
     def test_generates_valid_groff(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         assert content.startswith(".TH ")
         assert "DUPLICATES" in content
 
     def test_includes_examples_section(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         assert ".SH EXAMPLES" in content or "EXAMPLES" in content
 
     def test_includes_files_section(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         assert "config.toml" in content
 
     def test_includes_see_also(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         assert "ffprobe" in content
 
     def test_includes_exit_status(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         assert "EXIT STATUS" in content
 
     def test_includes_scan_options(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         # groff escapes hyphens as \-, so check for the option names
         assert "threshold" in content
@@ -55,7 +55,7 @@ class TestGenerate:
 
     def test_version_in_header(self, tmp_path):
         out = tmp_path / "test.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         content = out.read_text()
         # groff escapes hyphens as \-, so check for the escaped form
         assert "duplicates\\-detector" in content.lower()
@@ -64,23 +64,23 @@ class TestGenerate:
 class TestCheck:
     def test_check_passes_when_fresh(self, tmp_path):
         out = tmp_path / "duplicates-detector.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         # Check against the file we just generated should pass
-        assert generate_manpage.check(str(out)) is True
+        assert generate_manpage.check(out) is True
 
     def test_check_fails_when_stale(self, tmp_path):
         out = tmp_path / "duplicates-detector.1"
         out.write_text("stale content")
-        assert generate_manpage.check(str(out)) is False
+        assert generate_manpage.check(out) is False
 
     def test_check_fails_when_missing(self, tmp_path):
         out = tmp_path / "duplicates-detector.1"
-        assert generate_manpage.check(str(out)) is False
+        assert generate_manpage.check(out) is False
 
     def test_check_passes_despite_version_drift(self, tmp_path):
         """check() ignores .TH header differences (version drift from hatch-vcs)."""
         out = tmp_path / "duplicates-detector.1"
-        generate_manpage.generate(str(out))
+        generate_manpage.generate(out)
         # Tamper with the .TH line (simulate version change)
         content = out.read_text()
         lines = content.splitlines(keepends=True)
@@ -88,7 +88,7 @@ class TestCheck:
             '.TH DUPLICATES\\-DETECTOR "1" "2099\\-01\\-01" "duplicates\\-detector 99.0.0" "Duplicates Detector Manual"\n'
         )
         out.write_text("".join(lines))
-        assert generate_manpage.check(str(out)) is True
+        assert generate_manpage.check(out) is True
 
 
 class TestPackaging:
@@ -112,7 +112,7 @@ class TestMain:
     def test_generate_default(self, tmp_path, monkeypatch):
         out = tmp_path / "man" / "duplicates-detector.1"
         out.parent.mkdir()
-        monkeypatch.setattr(generate_manpage, "DEFAULT_OUTPUT", str(out))
+        monkeypatch.setattr(generate_manpage, "DEFAULT_OUTPUT", out)
         generate_manpage.main([])
         assert out.exists()
         assert out.read_text().startswith(".TH ")
@@ -121,6 +121,6 @@ class TestMain:
         out = tmp_path / "man" / "duplicates-detector.1"
         out.parent.mkdir()
         out.write_text("stale")
-        monkeypatch.setattr(generate_manpage, "DEFAULT_OUTPUT", str(out))
+        monkeypatch.setattr(generate_manpage, "DEFAULT_OUTPUT", out)
         with pytest.raises(SystemExit, match="1"):
             generate_manpage.main(["--check"])

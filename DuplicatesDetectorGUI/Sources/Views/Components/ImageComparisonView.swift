@@ -153,6 +153,36 @@ struct ImageComparisonView: View {
     }
 
     private func imagePane(_ image: NSImage?, isLoading: Bool, label: String, path: String) -> some View {
+        imageSurface(image, isLoading: isLoading, label: label, path: path)
+            .clipped()
+    }
+
+    // MARK: - Wipe Slider
+
+    private var wipeSliderView: some View {
+        ZStack {
+            imageSurface(imageB, isLoading: isLoadingB, label: labelB, path: pathB,
+                         labelAlignment: .trailing)
+
+            imageSurface(imageA, isLoading: isLoadingA, label: labelA, path: pathA)
+                .clipShape(
+                    HorizontalClip(width: surfaceSize.width * wipePosition)
+                )
+
+            wipeHandle(at: surfaceSize.width * wipePosition,
+                       height: surfaceSize.height,
+                       containerWidth: surfaceSize.width)
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .gesture(magnifyGesture)
+    }
+
+    /// Shared image rendering surface used by both side-by-side panes and wipe layers.
+    private func imageSurface(
+        _ image: NSImage?, isLoading: Bool, label: String, path: String,
+        labelAlignment: HorizontalAlignment = .leading
+    ) -> some View {
         ZStack {
             DDColors.surface0
 
@@ -178,73 +208,9 @@ struct ImageComparisonView: View {
                 )
             }
 
-            // Label
             VStack {
                 HStack {
-                    DDMediaLabel(text: label)
-                    Spacer()
-                }
-                Spacer()
-            }
-            .padding(DDSpacing.sm)
-        }
-        .clipped()
-    }
-
-    // MARK: - Wipe Slider
-
-    private var wipeSliderView: some View {
-        ZStack {
-            // Image B (full width, behind)
-            wipeImageLayer(imageB, isLoading: isLoadingB, label: labelB, path: pathB,
-                           isLeftSide: false)
-
-            // Image A (clipped to left of divider)
-            wipeImageLayer(imageA, isLoading: isLoadingA, label: labelA, path: pathA,
-                           isLeftSide: true)
-                .clipShape(
-                    HorizontalClip(width: surfaceSize.width * wipePosition)
-                )
-
-            // Divider handle
-            wipeHandle(at: surfaceSize.width * wipePosition,
-                       height: surfaceSize.height,
-                       containerWidth: surfaceSize.width)
-        }
-        .clipped()
-        .contentShape(Rectangle())
-        .gesture(magnifyGesture)
-    }
-
-    private func wipeImageLayer(_ image: NSImage?, isLoading: Bool, label: String, path: String,
-                                isLeftSide: Bool) -> some View {
-        ZStack {
-            DDColors.surface0
-
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .scaleEffect(scale * magnifyBy)
-                    .offset(
-                        x: offset.width + dragOffset.width,
-                        y: offset.height + dragOffset.height
-                    )
-            } else if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                ContentUnavailableView(
-                    "Image Unavailable",
-                    systemImage: "photo",
-                    description: Text(path.fileName)
-                )
-            }
-
-            // Label — positioned to avoid the wipe divider handle
-            VStack {
-                HStack {
-                    if isLeftSide {
+                    if labelAlignment == .leading {
                         DDMediaLabel(text: label)
                         Spacer()
                     } else {

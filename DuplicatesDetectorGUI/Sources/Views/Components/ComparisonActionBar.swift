@@ -216,48 +216,33 @@ struct ComparisonActionBar: View {
         activeAction == .hardlink || activeAction == .symlink || activeAction == .reflink
     }
 
-    private var disambiguatedLabels: (a: String, b: String) {
-        ComparisonPanel.fileLabels(fileA: pair.fileA, fileB: pair.fileB)
-    }
-
     private var keepAButton: some View {
-        let targetIsProtected = pair.fileBIsReference
-        let isDisabled = targetIsProtected || isActionCLIOnly
-        let labels = disambiguatedLabels
-        return Button { onKeepA() } label: {
-            VStack(spacing: DDSpacing.xxs) {
-                Label("Keep A", systemImage: "arrow.left.circle.fill")
-                Text("\(activeAction.displayName) \(pair.fileB.fileName)")
-                    .font(DDTypography.metadata)
-                    .foregroundStyle(ddColors.textMuted)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
-        .controlSize(.regular)
-        .disabled(isDisabled)
-        .help(isActionCLIOnly
-              ? "\(activeAction.displayName) is available in the CLI only"
-              : targetIsProtected
-              ? "Cannot act on reference file"
-              : "\(activeAction.displayName) \(pair.fileB.fileName)")
-        .accessibilityIdentifier("Keep A")
-        .accessibilityLabel("Keep \(labels.a)")
-        .accessibilityHint(
-            isActionCLIOnly ? "\(activeAction.displayName) is available in the CLI only"
-            : targetIsProtected ? "Cannot act on reference file"
-            : "Keeps this file and \(activeAction.displayName.lowercased())s \(labels.b)"
-        )
+        let labels = ComparisonPanel.fileLabels(fileA: pair.fileA, fileB: pair.fileB)
+        return keepButton(side: "A", icon: "arrow.left.circle.fill",
+                          keptLabel: labels.a, targetLabel: labels.b,
+                          targetPath: pair.fileB, targetIsProtected: pair.fileBIsReference,
+                          onKeep: onKeepA)
     }
 
     private var keepBButton: some View {
-        let targetIsProtected = pair.fileAIsReference
+        let labels = ComparisonPanel.fileLabels(fileA: pair.fileA, fileB: pair.fileB)
+        return keepButton(side: "B", icon: "arrow.right.circle.fill",
+                          keptLabel: labels.b, targetLabel: labels.a,
+                          targetPath: pair.fileA, targetIsProtected: pair.fileAIsReference,
+                          onKeep: onKeepB)
+    }
+
+    private func keepButton(
+        side: String, icon: String,
+        keptLabel: String, targetLabel: String,
+        targetPath: String, targetIsProtected: Bool,
+        onKeep: @escaping () -> Void
+    ) -> some View {
         let isDisabled = targetIsProtected || isActionCLIOnly
-        let labels = disambiguatedLabels
-        return Button { onKeepB() } label: {
+        return Button { onKeep() } label: {
             VStack(spacing: DDSpacing.xxs) {
-                Label("Keep B", systemImage: "arrow.right.circle.fill")
-                Text("\(activeAction.displayName) \(pair.fileA.fileName)")
+                Label("Keep \(side)", systemImage: icon)
+                Text("\(activeAction.displayName) \(targetPath.fileName)")
                     .font(DDTypography.metadata)
                     .foregroundStyle(ddColors.textMuted)
                     .lineLimit(1)
@@ -270,13 +255,13 @@ struct ComparisonActionBar: View {
               ? "\(activeAction.displayName) is available in the CLI only"
               : targetIsProtected
               ? "Cannot act on reference file"
-              : "\(activeAction.displayName) \(pair.fileA.fileName)")
-        .accessibilityIdentifier("Keep B")
-        .accessibilityLabel("Keep \(labels.b)")
+              : "\(activeAction.displayName) \(targetPath.fileName)")
+        .accessibilityIdentifier("Keep \(side)")
+        .accessibilityLabel("Keep \(keptLabel)")
         .accessibilityHint(
             isActionCLIOnly ? "\(activeAction.displayName) is available in the CLI only"
             : targetIsProtected ? "Cannot act on reference file"
-            : "Keeps this file and \(activeAction.displayName.lowercased())s \(labels.a)"
+            : "Keeps this file and \(activeAction.displayName.lowercased())s \(targetLabel)"
         )
     }
 

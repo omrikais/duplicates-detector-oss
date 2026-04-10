@@ -28,14 +28,15 @@ struct TrendChart: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Duplicate pairs trend chart")
 
-            if entries.contains(where: { $0.spaceRecoverable != nil }) {
+            let entriesWithSpace = entries.filter { $0.spaceRecoverable != nil }
+            if !entriesWithSpace.isEmpty {
                 Text("Space Recoverable")
                     .font(DDTypography.label)
                     .foregroundStyle(DDColors.textSecondary)
-                Chart(entries.filter { $0.spaceRecoverable != nil }) { entry in
+                Chart(entriesWithSpace) { entry in
                     LineMark(
                         x: .value("Date", entry.createdAt),
-                        y: .value("MB", Double(entry.spaceRecoverable!) / (1024 * 1024))
+                        y: .value("MB", Double(entry.spaceRecoverable ?? 0) / (1024 * 1024))
                     )
                 }
                 .foregroundStyle(.orange)

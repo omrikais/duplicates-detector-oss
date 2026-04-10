@@ -36,10 +36,7 @@ struct ScanDirectoryIntent: ForegroundContinuableIntent {
             if accessing { url.stopAccessingSecurityScopedResource() }
         }
 
-        // Validate it's actually a directory.
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
-              isDir.boolValue else {
+        guard url.isExistingDirectory else {
             throw IntentError.notADirectory
         }
 

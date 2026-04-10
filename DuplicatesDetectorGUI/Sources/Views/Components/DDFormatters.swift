@@ -65,10 +65,14 @@ enum DDFormatters {
         }
     }
 
+    private nonisolated(unsafe) static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
     nonisolated static func formatRelativeDate(_ timestamp: Double) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
         let date = Date(timeIntervalSince1970: timestamp)
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 }

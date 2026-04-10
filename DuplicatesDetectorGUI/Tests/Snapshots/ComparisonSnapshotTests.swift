@@ -159,7 +159,6 @@ struct ComparisonSnapshotTests {
             activeAction: .trash,
             currentPairIndex: 0,
             totalFilteredPairs: 5,
-            onAction: { _ in },
             onKeepA: {},
             onKeepB: {},
             onPrevious: {},
