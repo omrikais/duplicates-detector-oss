@@ -84,7 +84,7 @@ struct ProgressScreen: View {
                         systemImage: "exclamationmark.triangle"
                     )
                     .font(DDTypography.label)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(DDColors.warning)
                     .padding(.horizontal, DDSpacing.md)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Warning: Limited Photos access. Only selected photos are visible. Grant full access in System Settings.")
@@ -192,7 +192,7 @@ struct ProgressScreen: View {
                                     }
                             }
                             .font(DDTypography.body)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(ddColors.textPrimary)
                             .ddGlassPill(size: .large, tint: DDColors.accent)
                             .accessibilityLabel("Resume scan. Session saved, you can quit and resume later.")
                         } else if isPausing {
@@ -216,7 +216,7 @@ struct ProgressScreen: View {
 
                     Button("Cancel Scan", role: .destructive) { store.send(.cancelScan) }
                         .font(DDTypography.body)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ddColors.textPrimary)
                         .ddGlassInteractivePill(size: .large, tint: DDColors.destructive.opacity(0.6))
                 }
             }

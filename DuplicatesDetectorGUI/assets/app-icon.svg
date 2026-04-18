@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+
+    <radialGradient id="bg" cx="0.25" cy="0.2" r="1.1">
+      <stop offset="0" stop-color="#3A4A5E"></stop>
+      <stop offset="0.45" stop-color="#22262C"></stop>
+      <stop offset="1" stop-color="#131316"></stop>
+    </radialGradient>
+
+    <linearGradient id="paperA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4C4C50"></stop>
+      <stop offset="1" stop-color="#3A3A3E"></stop>
+    </linearGradient>
+    <linearGradient id="paperB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E8ECF2"></stop>
+      <stop offset="1" stop-color="#C7CED8"></stop>
+    </linearGradient>
+
+    <radialGradient id="lens" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#4A90D9" stop-opacity="0.35"></stop>
+      <stop offset="0.55" stop-color="#4A90D9" stop-opacity="0.12"></stop>
+      <stop offset="1" stop-color="#4A90D9" stop-opacity="0.05"></stop>
+    </radialGradient>
+
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7FB3E6"></stop>
+      <stop offset="0.5" stop-color="#4A90D9"></stop>
+      <stop offset="1" stop-color="#2B5A8F"></stop>
+    </linearGradient>
+
+    <filter id="shadowFront" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"></feGaussianBlur>
+      <feOffset dx="0" dy="6"></feOffset>
+      <feComponentTransfer><feFuncA type="linear" slope="0.5"></feFuncA></feComponentTransfer>
+      <feMerge><feMergeNode></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+    </filter>
+
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10"></feGaussianBlur>
+    </filter>
+    <clipPath id="lensClip">
+      <circle cx="316" cy="296" r="96"></circle>
+    </clipPath>
+  </defs>
+
+
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#bg)"></rect>
+
+  <rect x="1" y="1" width="510" height="510" rx="111" ry="111" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2"></rect>
+
+
+  <g opacity="0.06" stroke="#FFFFFF" stroke-width="1">
+    <line x1="64" y1="128" x2="448" y2="128"></line>
+    <line x1="64" y1="192" x2="448" y2="192"></line>
+    <line x1="64" y1="256" x2="448" y2="256"></line>
+    <line x1="64" y1="320" x2="448" y2="320"></line>
+    <line x1="64" y1="384" x2="448" y2="384"></line>
+    <line x1="128" y1="64" x2="128" y2="448"></line>
+    <line x1="192" y1="64" x2="192" y2="448"></line>
+    <line x1="256" y1="64" x2="256" y2="448"></line>
+    <line x1="320" y1="64" x2="320" y2="448"></line>
+    <line x1="384" y1="64" x2="384" y2="448"></line>
+  </g>
+
+
+  <g transform="translate(148,102) rotate(-6 120 150)">
+    <rect x="0" y="0" width="240" height="300" rx="20" fill="url(#paperA)" stroke="#5A5A5E" stroke-width="2"></rect>
+
+    <path d="M 200 0 L 240 0 L 240 40 Z" fill="#2C2C2E"></path>
+    <path d="M 200 0 L 240 40 L 200 40 Z" fill="#4A4A4E" opacity="0.7"></path>
+
+    <rect x="24" y="64" width="140" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.22"></rect>
+    <rect x="24" y="86" width="184" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.14"></rect>
+    <rect x="24" y="108" width="120" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.14"></rect>
+    <rect x="24" y="130" width="168" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.14"></rect>
+    <rect x="24" y="152" width="96" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.14"></rect>
+  </g>
+
+
+  <g filter="url(#shadowFront)" transform="translate(108,134) rotate(4 120 150)">
+    <rect x="0" y="0" width="240" height="300" rx="20" fill="url(#paperB)" stroke="#A6ADB8" stroke-width="1.5"></rect>
+
+    <path d="M 200 0 L 240 0 L 240 40 Z" fill="#9098A4"></path>
+    <path d="M 200 0 L 240 40 L 200 40 Z" fill="#B8BFCA" opacity="0.9"></path>
+
+    <rect x="24" y="64" width="140" height="8" rx="4" fill="#2C2C2E" fill-opacity="0.55"></rect>
+    <rect x="24" y="86" width="184" height="8" rx="4" fill="#2C2C2E" fill-opacity="0.35"></rect>
+    <rect x="24" y="108" width="120" height="8" rx="4" fill="#2C2C2E" fill-opacity="0.35"></rect>
+    <rect x="24" y="130" width="168" height="8" rx="4" fill="#2C2C2E" fill-opacity="0.35"></rect>
+    <rect x="24" y="152" width="96" height="8" rx="4" fill="#2C2C2E" fill-opacity="0.35"></rect>
+  </g>
+
+
+
+  <circle cx="316" cy="296" r="104" fill="#4A90D9" opacity="0.22" filter="url(#glow)"></circle>
+
+
+  <circle cx="316" cy="296" r="96" fill="url(#lens)"></circle>
+
+
+  <g clip-path="url(#lensClip)">
+
+    <g stroke="#4A90D9" stroke-width="2" opacity="0.65" stroke-linecap="round">
+      <line x1="316" y1="220" x2="316" y2="244"></line>
+      <line x1="316" y1="348" x2="316" y2="372"></line>
+      <line x1="240" y1="296" x2="264" y2="296"></line>
+      <line x1="368" y1="296" x2="392" y2="296"></line>
+    </g>
+
+    <circle cx="316" cy="296" r="54" fill="none" stroke="#4A90D9" stroke-width="1.5" stroke-dasharray="3 5" opacity="0.75"></circle>
+
+    <path d="M 284 298 L 308 322 L 352 272" fill="none" stroke="#4A90D9" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></path>
+  </g>
+
+
+  <circle cx="316" cy="296" r="96" fill="none" stroke="url(#rim)" stroke-width="10"></circle>
+
+  <path d="M 260 254 A 80 80 0 0 1 312 220" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="3" stroke-linecap="round"></path>
+
+
+  <g transform="rotate(42 384 364)">
+    <rect x="376" y="364" width="92" height="22" rx="11" fill="#2B5A8F"></rect>
+    <rect x="376" y="364" width="92" height="22" rx="11" fill="url(#rim)" opacity="0.55"></rect>
+    <rect x="376" y="364" width="92" height="6" rx="3" fill="rgba(255,255,255,0.22)"></rect>
+
+    <rect x="362" y="360" width="24" height="30" rx="6" fill="#2B5A8F"></rect>
+  </g>
+</svg>

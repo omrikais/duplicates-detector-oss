@@ -493,7 +493,7 @@ private struct EditProfileSheet: View {
     var body: some View {
         VStack(spacing: DDSpacing.md) {
             Text("Edit Profile: \(profileName)")
-                .font(.headline)
+                .font(DDTypography.sectionTitle)
 
             Form {
                 Picker("Mode", selection: Binding(

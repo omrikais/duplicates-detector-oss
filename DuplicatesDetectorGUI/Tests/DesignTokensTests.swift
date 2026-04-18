@@ -274,4 +274,62 @@ struct DesignTokensTests {
         #expect(DDColors.comparatorColor(for: "page_count") == .brown)
         #expect(DDColors.comparatorColor(for: "doc_meta") == .cyan)
     }
+
+    // MARK: - DDComparators.shortName(for:)
+
+    @Test(
+        "shortName returns terse nickname for known keys",
+        arguments: [
+            ("filename", "hash"),
+            ("duration", "dur"),
+            ("resolution", "dim"),
+            ("fileSize", "size"),
+            ("filesize", "size"),
+            ("doc_meta", "meta"),
+            ("docMeta", "meta"),
+            ("page_count", "pages"),
+        ] as [(String, String)]
+    )
+    func shortNameKnown(key: String, expected: String) {
+        #expect(DDComparators.shortName(for: key) == expected)
+    }
+
+    @Test("shortName falls back to lowercased key for unknown input")
+    func shortNameUnknown() {
+        #expect(DDComparators.shortName(for: "SomeCustom") == "somecustom")
+    }
+
+    // MARK: - ScoreTier
+
+    @Test(
+        "ScoreTier classifies scores into the correct band",
+        arguments: [
+            (100.0, ScoreTier.critical),
+            (95.5, ScoreTier.critical),
+            (90.0, ScoreTier.critical),
+            (89.9, ScoreTier.high),
+            (72.3, ScoreTier.high),
+            (70.0, ScoreTier.high),
+            (69.0, ScoreTier.medium),
+            (50.0, ScoreTier.medium),
+            (49.9, ScoreTier.low),
+            (0.0, ScoreTier.low),
+        ] as [(Double, ScoreTier)]
+    )
+    func scoreTierClassification(score: Double, expected: ScoreTier) {
+        #expect(ScoreTier(score: score) == expected)
+    }
+
+    @Test(
+        "ScoreTier.shortLabel matches editorial spec strings",
+        arguments: [
+            (ScoreTier.critical, "CRIT"),
+            (ScoreTier.high, "HIGH"),
+            (ScoreTier.medium, "MED"),
+            (ScoreTier.low, "LOW"),
+        ] as [(ScoreTier, String)]
+    )
+    func scoreTierShortLabel(tier: ScoreTier, expected: String) {
+        #expect(tier.shortLabel == expected)
+    }
 }

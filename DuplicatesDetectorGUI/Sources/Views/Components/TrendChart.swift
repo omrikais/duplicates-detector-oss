@@ -23,7 +23,7 @@ struct TrendChart: View {
                     y: .value("Pairs", entry.pairCount)
                 )
             }
-            .foregroundStyle(.blue)
+            .foregroundStyle(DDColors.accent)
             .frame(height: 120)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Duplicate pairs trend chart")
@@ -39,7 +39,7 @@ struct TrendChart: View {
                         y: .value("MB", Double(entry.spaceRecoverable ?? 0) / (1024 * 1024))
                     )
                 }
-                .foregroundStyle(.orange)
+                .foregroundStyle(DDColors.warning)
                 .frame(height: 120)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Space recoverable trend chart")

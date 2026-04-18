@@ -235,7 +235,7 @@ struct ImageComparisonView: View {
             Circle()
                 .fill(DDColors.accent)
                 .frame(width: 24, height: 24)
-                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                .shadow(color: DDShadow.control.color, radius: DDShadow.control.radius, y: DDShadow.control.y)
                 .overlay {
                     Image(systemName: "arrow.left.and.right")
                         .font(.system(size: wipeHandleSize, weight: .bold))

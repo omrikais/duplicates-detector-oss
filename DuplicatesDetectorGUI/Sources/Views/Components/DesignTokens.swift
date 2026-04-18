@@ -107,6 +107,8 @@ enum DDSpacing {
     static let breakdownBarCompact: CGFloat = 8
     /// Height for detailed breakdown bars (comparison panel).
     static let breakdownBarDetail: CGFloat = 10
+    /// Height for editorial breakdown bars (inline labels, ticks, bevel).
+    static let breakdownBarEditorial: CGFloat = 22
     /// Column width for raw score percentage.
     static let scoreColumnWidth: CGFloat = 50
     /// Column width for weight values.
@@ -384,6 +386,34 @@ enum DDComparators {
 
     static func displayName(for key: String) -> String {
         names[key] ?? key.capitalized
+    }
+
+    /// Short nickname for editorial breakdown-bar inline labels.
+    ///
+    /// Returns terse monospace-friendly names ("hash", "dim", "size") when the
+    /// segment is wide enough to show a label but too narrow for the full
+    /// display name. Falls back to the lowercased key when unmapped.
+    private static let shortNames: [String: String] = [
+        "filename": "hash",
+        "duration": "dur",
+        "resolution": "dim",
+        "fileSize": "size",
+        "filesize": "size",
+        "exif": "exif",
+        "content": "content",
+        "audio": "audio",
+        "tags": "tags",
+        "directory": "dir",
+        "byte_identical": "byte",
+        "byteIdentical": "byte",
+        "page_count": "pages",
+        "pageCount": "pages",
+        "doc_meta": "meta",
+        "docMeta": "meta",
+    ]
+
+    static func shortName(for key: String) -> String {
+        shortNames[key] ?? key.lowercased()
     }
 }
 

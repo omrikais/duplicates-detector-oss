@@ -335,8 +335,7 @@ struct ScoreBreakdownDetail: View {
                 .font(DDTypography.sectionTitle)
                 .foregroundStyle(ddColors.textPrimary)
 
-            BreakdownBar(breakdown: breakdown, detail: detail, totalScore: totalScore)
-                .frame(height: DDSpacing.breakdownBarDetail)
+            BreakdownBar(breakdown: breakdown, detail: detail, totalScore: totalScore, variant: .editorial)
 
             VStack(alignment: .leading, spacing: DDSpacing.xs) {
                 ForEach(sortedComparators, id: \.key) { key, detailScore in

@@ -8,9 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - Add `duplicates-detector(1)` man page, installed via pip and included in Homebrew cask and app bundle
+- **GUI**: Add editorial `BreakdownBar` variant for prominent score breakdowns — taller 22pt bar with inline per-segment comparator labels, satin overlay, inset bevel, and faint threshold ticks at 50 / 70 / 90
+- **GUI**: Add `ScoreTier` enum exposing the named tier bands (`CRIT` / `HIGH` / `MED` / `LOW`) for any surface that needs the score band label
+- **HTML report**: Visual breakdown bar replaces the text-only breakdown cell in both pair and group tables, with CSS container queries so inline labels hide automatically on tight segments
 
 ### Changed
 - Settings window is now resizable (replaced fixed-size Settings scene with a Window scene)
+- **HTML report**: Score-class thresholds now follow the design system's Score Language (90 / 70 / 50) and add a new `score-critical` class for 90+ scores; the medium tier uses a yellow fill for distinction
+- **GUI**: Replace app icon with a clearer duplicate-detection metaphor — two overlapping document pages under a steel-blue magnifying glass with a checkmark
+- **GUI**: Route remaining hardcoded colors, typography, and shadow values through `DDColors` / `DDTypography` / `DDShadow` tokens across Customize Sheet, General Settings, Trend Chart, and Progress Screen
 
 ## [3.0.4] - 2026-04-09
 ### Fixed

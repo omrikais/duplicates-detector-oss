@@ -62,7 +62,7 @@ final class CustomizePanelPresenter {
         p.titleVisibility = .hidden
         p.appearance = NSAppearance(named: .darkAqua)
         p.isOpaque = false
-        p.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 0.92)
+        p.backgroundColor = NSColor(DDColors.surface0).withAlphaComponent(0.92)
         p.level = .floating
         p.isReleasedWhenClosed = false
         p.animationBehavior = .utilityWindow

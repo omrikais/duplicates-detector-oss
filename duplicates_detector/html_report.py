@@ -42,12 +42,114 @@ def _escape(text: object) -> str:
 
 
 def _score_css_class(score: float) -> str:
-    """Return CSS class name matching reporter.py score_color() thresholds."""
-    if score >= 80:
+    """Return CSS class name for the score badge.
+
+    Thresholds mirror the design system's score scale (90 / 70 / 50) — the
+    same bands used by ``DDColors.scoreColor`` and ``ScoreTier`` in the GUI.
+    """
+    if score >= 90:
+        return "score-critical"
+    if score >= 70:
         return "score-high"
-    if score >= 60:
+    if score >= 50:
         return "score-med"
     return "score-low"
+
+
+def _score_tier_label(score: float) -> str:
+    """Return the short tier label (``CRIT`` / ``HIGH`` / ``MED`` / ``LOW``).
+
+    Used by the editorial breakdown bar's tier chip.
+    """
+    if score >= 90:
+        return "CRIT"
+    if score >= 70:
+        return "HIGH"
+    if score >= 50:
+        return "MED"
+    return "LOW"
+
+
+# Comparator color palette — mirrors ``DDColors.comparatorColors`` in the GUI.
+# Keys include both JSON camelCase and CLI snake_case aliases so the same
+# dictionary handles any comparator name flowing through a ``ScoredPair``.
+_COMPARATOR_HEX: dict[str, str] = {
+    "filename": "#0A84FF",
+    "duration": "#BF5AF2",
+    "resolution": "#FF9F0A",
+    "fileSize": "#64D2FF",
+    "filesize": "#64D2FF",
+    "exif": "#FF6482",
+    "content": "#30D158",
+    "audio": "#5E5CE6",
+    "tags": "#63E6BE",
+    "page_count": "#AC8E68",
+    "pageCount": "#AC8E68",
+    "doc_meta": "#5AC8FA",
+    "docMeta": "#5AC8FA",
+    "directory": "#8E8E93",
+    "byte_identical": "#34C759",
+    "byteIdentical": "#34C759",
+}
+
+# Short nicknames for editorial breakdown-bar inline labels — matches
+# ``DDComparators.shortName`` in the GUI.
+_COMPARATOR_SHORT: dict[str, str] = {
+    "filename": "hash",
+    "duration": "dur",
+    "resolution": "dim",
+    "fileSize": "size",
+    "filesize": "size",
+    "exif": "exif",
+    "content": "content",
+    "audio": "audio",
+    "tags": "tags",
+    "page_count": "pages",
+    "pageCount": "pages",
+    "doc_meta": "meta",
+    "docMeta": "meta",
+    "directory": "dir",
+    "byte_identical": "byte",
+    "byteIdentical": "byte",
+}
+
+
+def _render_breakdown_bar_html(pair: ScoredPair) -> str:
+    """Render the editorial breakdown bar for a scored pair.
+
+    Produces a fixed-width (``min-width`` constrained) bar with one segment
+    per comparator contribution, sorted largest-first. Each segment carries
+    the short comparator nickname (``hash`` / ``dur`` / ``dim`` / ``size`` / …)
+    and its weighted value inline; labels hide automatically via CSS
+    container queries when segments are too narrow to fit them. Three
+    threshold ticks at 50 / 70 / 90 mark the score-tier boundaries.
+
+    Returns an empty string when the pair has no non-zero contributions so
+    the caller can fall back to a text placeholder.
+    """
+    segments = [(name, val) for name, val in pair.breakdown.items() if val is not None and val > 0]
+    segments.sort(key=lambda item: (-item[1], item[0]))
+    if not segments:
+        return ""
+
+    parts: list[str] = ['<div class="dd-bar" role="img" aria-label="Score breakdown">']
+    for name, val in segments:
+        color = _COMPARATOR_HEX.get(name, "#95a5a6")
+        short = _COMPARATOR_SHORT.get(name, name.lower())
+        title = f"{name}: {val:.1f}"
+        parts.append(
+            f'<div class="dd-bar-seg" style="flex:{val:.2f};--c:{color};" '
+            f'title="{_escape(title)}">'
+            f'<span class="dd-bar-nm">{_escape(short)}</span>'
+            f'<span class="dd-bar-v">{val:.0f}</span>'
+            "</div>"
+        )
+    # Threshold ticks — absolute positions in the bar (tier boundaries).
+    parts.append('<div class="dd-bar-tick" style="left:50%"></div>')
+    parts.append('<div class="dd-bar-tick" style="left:70%"></div>')
+    parts.append('<div class="dd-bar-tick dd-bar-tick-hi" style="left:90%"></div>')
+    parts.append("</div>")
+    return "".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -109,14 +211,28 @@ def _get_thumbnail(
 
 _CSS = """\
 :root {
-  --color-high: #e74c3c;
-  --color-med: #f39c12;
+  /* Tier colors — 90+ critical, 70+ high, 50+ medium, <50 low.
+     Matches the design system Score Language bands. */
+  --color-critical: #e74c3c;
+  --color-high: #f39c12;
+  --color-med: #f1c40f;
   --color-low: #27ae60;
   --bg: #fafafa;
   --card-bg: #fff;
   --border: #e0e0e0;
   --text: #333;
   --text-dim: #888;
+  /* Comparator palette — matches DDColors.comparatorColors. */
+  --dd-cmp-filename:   #0A84FF;
+  --dd-cmp-duration:   #BF5AF2;
+  --dd-cmp-resolution: #FF9F0A;
+  --dd-cmp-filesize:   #64D2FF;
+  --dd-cmp-exif:       #FF6482;
+  --dd-cmp-content:    #30D158;
+  --dd-cmp-audio:      #5E5CE6;
+  --dd-cmp-tags:       #63E6BE;
+  --dd-cmp-pagecount:  #AC8E68;
+  --dd-cmp-docmeta:    #5AC8FA;
 }
 *, *::before, *::after { box-sizing: border-box; }
 body {
@@ -156,9 +272,10 @@ tr:hover { background: #f0f4ff; }
   display: inline-block; padding: 2px 8px; border-radius: 12px;
   color: #fff; font-weight: 700; font-size: 0.85rem;
 }
-.score-high { background: var(--color-high); }
-.score-med { background: var(--color-med); }
-.score-low { background: var(--color-low); }
+.score-critical { background: var(--color-critical); color: #fff; }
+.score-high { background: var(--color-high); color: #fff; }
+.score-med { background: var(--color-med); color: #333; }
+.score-low { background: var(--color-low); color: #fff; }
 .keep-tag {
   display: inline-block; padding: 1px 6px; border-radius: 4px;
   background: var(--color-low); color: #fff; font-size: 0.75rem; font-weight: 600;
@@ -170,6 +287,73 @@ tr:hover { background: #f0f4ff; }
   margin-left: 4px;
 }
 .breakdown { font-size: 0.8rem; color: var(--text-dim); }
+/* Editorial breakdown bar — stacked comparator contributions with
+   inline labels, threshold ticks at 50 / 70 / 90, and auto-hiding
+   labels on tight segments via container queries. */
+.dd-bar {
+  position: relative;
+  display: flex;
+  height: 20px;
+  min-width: 240px;
+  max-width: 320px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(0,0,0,0.06), rgba(0,0,0,0.02));
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.06),
+    inset 0 1px 0 rgba(0,0,0,0.06);
+}
+.dd-bar-seg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  background: var(--c);
+  background-image: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.18),
+    rgba(255,255,255,0) 50%,
+    rgba(0,0,0,0.08)
+  );
+  border-right: 1px solid rgba(0,0,0,0.18);
+  color: #fff;
+  container-type: inline-size;
+}
+.dd-bar-seg:last-child { border-right: 0; }
+.dd-bar-nm, .dd-bar-v {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.18);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-bar-v { font-weight: 700; }
+@container (max-width: 44px) {
+  .dd-bar-nm, .dd-bar-v { display: none; }
+}
+.dd-bar-tick {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: rgba(0,0,0,0.12);
+  pointer-events: none;
+}
+.dd-bar-tick-hi { background: rgba(0,0,0,0.20); }
+@media print {
+  .dd-bar {
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2);
+    background: transparent;
+  }
+  .dd-bar-seg { background-image: none; }
+}
 .path-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 details { margin-bottom: 16px; }
 summary {
@@ -636,13 +820,14 @@ def _html_pair_table(
         a_display = pair.file_a.path.name if not verbose else a_path
         b_display = pair.file_b.path.name if not verbose else b_path
 
+        breakdown_bar = _render_breakdown_bar_html(pair)
         if verbose and pair.detail:
-            breakdown = _escape(_format_breakdown_verbose(pair))
+            breakdown_text = _escape(_format_breakdown_verbose(pair))
         else:
             bd_parts: list[str] = []
             for name, val in pair.breakdown.items():
                 bd_parts.append(f"{name}: n/a" if val is None else f"{name}: {val:.1f}")
-            breakdown = _escape(" | ".join(bd_parts))
+            breakdown_text = _escape(" | ".join(bd_parts))
 
         score_cls = _score_css_class(pair.total_score)
 
@@ -697,7 +882,8 @@ def _html_pair_table(
             f'<span class="score-badge {score_cls}">{pair.total_score:.1f}</span></td>'
         )
 
-        parts.append(f'<td class="breakdown">{breakdown}</td>')
+        bar_cell = breakdown_bar if breakdown_bar else f'<span class="breakdown">{breakdown_text}</span>'
+        parts.append(f'<td class="breakdown" data-sort-value="{_escape(breakdown_text)}">{bar_cell}</td>')
 
         if keep_strategy:
             keep_text = "A" if keep == "a" else ("B" if keep == "b" else "-")
@@ -804,7 +990,11 @@ def _html_group_sections(
                     f'<td><span class="score-badge {score_cls}">{pair.total_score:.1f}</span></td>'
                 )
                 if verbose:
-                    parts.append(f'<td class="breakdown">{_escape(_format_breakdown_verbose(pair))}</td>')
+                    bar_html = _render_breakdown_bar_html(pair)
+                    if bar_html:
+                        parts.append(f'<td class="breakdown">{bar_html}</td>')
+                    else:
+                        parts.append(f'<td class="breakdown">{_escape(_format_breakdown_verbose(pair))}</td>')
                 parts.append("</tr>\n")
             parts.append("</tbody></table>")
 

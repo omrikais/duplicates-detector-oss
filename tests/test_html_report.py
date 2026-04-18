@@ -16,7 +16,9 @@ from duplicates_detector.html_report import (
     _html_head,
     _html_summary_dashboard,
     _load_resource,
+    _render_breakdown_bar_html,
     _score_css_class,
+    _score_tier_label,
     _thumbnail_placeholder,
     write_group_html,
     write_html,
@@ -139,20 +141,122 @@ def _make_group(
 
 
 class TestScoreCssClass:
-    def test_high_score(self):
-        assert _score_css_class(90.0) == "score-high"
+    """Tier thresholds mirror the design system: 90 / 70 / 50."""
 
-    def test_boundary_80(self):
-        assert _score_css_class(80.0) == "score-high"
+    def test_critical_score(self):
+        assert _score_css_class(95.5) == "score-critical"
+
+    def test_boundary_90(self):
+        assert _score_css_class(90.0) == "score-critical"
+
+    def test_high_score(self):
+        assert _score_css_class(85.0) == "score-high"
+
+    def test_boundary_70(self):
+        assert _score_css_class(70.0) == "score-high"
 
     def test_medium_score(self):
-        assert _score_css_class(70.0) == "score-med"
+        assert _score_css_class(65.0) == "score-med"
 
-    def test_boundary_60(self):
-        assert _score_css_class(60.0) == "score-med"
+    def test_boundary_50(self):
+        assert _score_css_class(50.0) == "score-med"
 
     def test_low_score(self):
-        assert _score_css_class(50.0) == "score-low"
+        assert _score_css_class(49.9) == "score-low"
+
+    def test_zero(self):
+        assert _score_css_class(0.0) == "score-low"
+
+
+class TestScoreTierLabel:
+    """Editorial tier chips: ``CRIT`` / ``HIGH`` / ``MED`` / ``LOW``."""
+
+    def test_critical(self):
+        assert _score_tier_label(95.0) == "CRIT"
+
+    def test_boundary_90(self):
+        assert _score_tier_label(90.0) == "CRIT"
+
+    def test_high(self):
+        assert _score_tier_label(85.0) == "HIGH"
+
+    def test_boundary_70(self):
+        assert _score_tier_label(70.0) == "HIGH"
+
+    def test_medium(self):
+        assert _score_tier_label(60.0) == "MED"
+
+    def test_boundary_50(self):
+        assert _score_tier_label(50.0) == "MED"
+
+    def test_low(self):
+        assert _score_tier_label(10.0) == "LOW"
+
+
+class TestRenderBreakdownBarHtml:
+    def test_empty_breakdown_returns_empty_string(self):
+        pair = _make_pair(breakdown={})
+        assert _render_breakdown_bar_html(pair) == ""
+
+    def test_breakdown_of_all_none_values_returns_empty_string(self):
+        pair = _make_pair(breakdown={"filename": None, "duration": None})
+        assert _render_breakdown_bar_html(pair) == ""
+
+    def test_renders_one_segment_per_nonzero_comparator(self):
+        pair = _make_pair(breakdown={"filename": 25.0, "duration": 30.0, "resolution": 10.0, "fileSize": 8.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert html_str.count("dd-bar-seg") == 4
+
+    def test_segments_use_short_nicknames(self):
+        pair = _make_pair(breakdown={"filename": 48.0, "duration": 30.0, "resolution": 10.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert ">hash<" in html_str
+        assert ">dur<" in html_str
+        assert ">dim<" in html_str
+
+    def test_segments_are_sorted_largest_first(self):
+        pair = _make_pair(breakdown={"filename": 15.0, "duration": 30.0, "resolution": 10.0})
+        html_str = _render_breakdown_bar_html(pair)
+        dur_pos = html_str.index(">dur<")
+        hash_pos = html_str.index(">hash<")
+        dim_pos = html_str.index(">dim<")
+        assert dur_pos < hash_pos < dim_pos
+
+    def test_segments_carry_comparator_color(self):
+        pair = _make_pair(breakdown={"filename": 48.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert "#0A84FF" in html_str
+
+    def test_includes_three_threshold_ticks(self):
+        pair = _make_pair(breakdown={"filename": 48.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert html_str.count("dd-bar-tick") >= 3
+        assert "left:50%" in html_str
+        assert "left:70%" in html_str
+        assert "left:90%" in html_str
+
+    def test_filters_out_zero_contributions(self):
+        pair = _make_pair(breakdown={"filename": 48.0, "duration": 0.0, "resolution": 10.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert ">dur<" not in html_str
+        assert ">hash<" in html_str
+        assert ">dim<" in html_str
+
+    def test_segment_title_includes_comparator_key_and_value(self):
+        pair = _make_pair(breakdown={"filename": 48.7})
+        html_str = _render_breakdown_bar_html(pair)
+        assert "filename: 48.7" in html_str
+
+    def test_accessibility_label_present(self):
+        pair = _make_pair(breakdown={"filename": 48.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert 'aria-label="Score breakdown"' in html_str
+
+    def test_unknown_comparator_uses_lowercase_key_and_neutral_color(self):
+        pair = _make_pair(breakdown={"customSignal": 42.0})
+        html_str = _render_breakdown_bar_html(pair)
+        assert ">customsignal<" in html_str
+        assert "#95a5a6" in html_str
 
 
 # ---------------------------------------------------------------------------
@@ -450,13 +554,18 @@ class TestWriteHtml:
         assert "<table>" in html_str
         assert "<tbody>" in html_str
 
+    def test_score_color_coding_critical(self):
+        pair = _make_pair(score=95.0)
+        html_str = self._render(pairs=[pair])
+        assert "score-critical" in html_str
+
     def test_score_color_coding_high(self):
-        pair = _make_pair(score=90.0)
+        pair = _make_pair(score=75.0)
         html_str = self._render(pairs=[pair])
         assert "score-high" in html_str
 
     def test_score_color_coding_medium(self):
-        pair = _make_pair(score=65.0)
+        pair = _make_pair(score=55.0)
         html_str = self._render(pairs=[pair])
         assert "score-med" in html_str
 
